@@ -88,6 +88,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
     <a href="#master">總表</a><a href="#person">個人頁</a><a href="#project">專案頁</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" id="theme" title="切換主題">◐</button>
+    <button class="hbtn" id="maskBtn" title="隱藏/顯示金額（分享螢幕用）" style="display:none">👁 金額</button>
     <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
   </nav>
 </header>
@@ -126,8 +127,13 @@ const M=['202608','202609','202610','202611','202612','202701','202702','202703'
 const ML={202608:'8月',202609:'9月',202610:'10月',202611:'11月',202612:'12月',202701:'1月',202702:'2月',202703:'3月',202704:'4月',202705:'5月',202706:'6月'};
 const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'存金'};
 const PC={ned:'--fN',di:'--fDI',se:'--fSE',hrf:'--fH',otf:'--fO',ned2027:'--fP',pipeA:'--fP',pipeB:'--fP',internal:'--crit'};
-const k=v=>(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k';
-const wan=v=>(v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬';
+let ROLE=null;
+let MASK=localStorage.getItem('cr_mask')==='1';
+const isAdmin=()=>!!(ROLE&&ROLE.role==='admin');
+const money=s=>!isAdmin()?'':(MASK?'●●●':s);
+const k=v=>money((v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k');
+const wan=v=>money((v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬');
+const usd=v=>money('US$'+(+v).toLocaleString('en',{maximumFractionDigits:0}));
 let DB=null,pmap={},prmap={},W=[],pending={};
 
 // ---------- auth (dependency-free GoTrue REST) ----------
@@ -206,16 +212,61 @@ document.getElementById('logout').onclick=async()=>{
   try{await authFetch(AUTH+'/logout',{method:'POST'})}catch(e){}
   saveSes(null);DB=null;location.hash='#master';showLogin();
 };
-function enterApp(){showApp();reload()}
+async function fetchRole(){
+  try{
+    const u=await(await authFetch(AUTH+'/user')).json();
+    const email=(u.email||'').toLowerCase();
+    const r=await authFetch(SB+'/rest/v1/user_roles?select=role,person_id&email=eq.'+encodeURIComponent(email));
+    const rows=r.ok?await r.json():[];
+    ROLE=rows[0]?{role:rows[0].role,person_id:rows[0].person_id,email}:null;
+  }catch(e){ROLE=null}
+}
+function showBlockedAccount(){
+  document.getElementById('app').style.display='none';
+  const lg=document.getElementById('login');lg.style.display='block';
+  lg.querySelector('.box').innerHTML='<div class="eyebrow">DTL · Control Room</div><h2>帳號未開通</h2><p>你已完成登入，但此帳號尚未被授權存取。請聯繫管理者開通。</p><button class="btn" onclick="document.getElementById(\'logout\').click()">登出</button>';
+  document.getElementById('logout').style.display='';
+}
+function applyRoleNav(){
+  const links=document.querySelectorAll('nav a');
+  links.forEach(a=>{
+    const pg=a.hash.slice(1).split('/')[0];
+    if(!isAdmin()&&(pg==='project'||pg==='amend'))a.style.display='none';
+    if(!isAdmin()&&pg==='person'){a.textContent='我的頁面';a.href='#person/'+(ROLE.person_id||'')}
+  });
+  document.getElementById('maskBtn').style.display=isAdmin()?'':'none';
+}
+async function enterApp(){
+  showApp();
+  await fetchRole();
+  if(!ROLE){showBlockedAccount();return}
+  applyRoleNav();
+  if(!isAdmin()&&ROLE.person_id&&!location.hash.startsWith('#person'))location.hash='#person/'+ROLE.person_id;
+  reload();
+}
 
 async function q(path){const r=await authFetch(SB+'/rest/v1/'+path);if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
 async function loadAll(){
-  const [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals]=await Promise.all([
-    q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
-    q('allocations?select=*&limit=2000'),q('amendment_items?select=*&order=id'),
-    q('decisions?select=*&order=id'),q('gates?select=*&order=id'),
-    q('deliverables?select=*'),q('contract_events?select=*&order=date'),
-    q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200')]);
+  let people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals;
+  if(isAdmin()){
+    [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals]=await Promise.all([
+      q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
+      q('allocations?select=*&limit=2000'),q('amendment_items?select=*&order=id'),
+      q('decisions?select=*&order=id'),q('gates?select=*&order=id'),
+      q('deliverables?select=*'),q('contract_events?select=*&order=date'),
+      q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200')]);
+  }else{
+    // member: 無金額視圖；不取任何含金額的表
+    let props=[];
+    [people,allocations,projects,deliverables,contract_events,props]=await Promise.all([
+      q('people_public?select=*&order=id'),q('allocations_public?select=*&limit=3000'),
+      q('projects?select=id,name,status,provisional,confidence'),
+      q('deliverables?select=*'),q('contract_events?select=*&order=date'),
+      q('edit_proposals?select=id,created_at,author,status,target_table,target_pk,loe:payload->loe_pct&order=id.desc&limit=100')]);
+    proposals=props.map(x=>({...x,payload:{loe_pct:x.loe}}));
+    budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
+    people.forEach(p=>{if(!p.monthly_cost)p.monthly_cost={}});
+  }
   const settings={};settingsRows.forEach(r=>settings[r.key]=(r.value&&'v' in r.value&&Object.keys(r.value).length===1)?r.value.v:r.value);
   DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals};
   pmap=Object.fromEntries(people.map(p=>[p.id,p]));
@@ -227,10 +278,10 @@ async function loadAll(){
 }
 function personMonth(pid,m){return W.filter(a=>a.person_id===pid&&a.month===m)}
 function loeOf(pid,m){const p=pmap[pid];const rows=personMonth(pid,m);
-  const sal=(p.monthly_cost||{})[m]||0;if(!sal)return{used:0,cap:p.capacity_default,rows:[],sal:0};
-  const cap=p.capacity_default;
-  const used=rows.reduce((s,a)=>s+(a.loe_pct!=null?+a.loe_pct:a.amount_twd/sal*cap),0);
-  return{used,cap,rows,sal}}
+  const sal=(p.monthly_cost||{})[m]||0;const cap=p.capacity_default;
+  const used=rows.reduce((s,a)=>s+(a.loe_pct!=null?+a.loe_pct:(sal?a.amount_twd/sal*cap:0)),0);
+  const active=sal>0||rows.length>0;
+  return{used,cap,rows,sal,active}}
 
 function lossRange(){
   const s=DB.settings;
@@ -239,20 +290,22 @@ function lossRange(){
   return wan(base)+'–'+wan(base+q*0.85);
 }
 function vMaster(){
-  let provAmt=0;W.forEach(a=>{if(a.provisional)provAmt+=+a.amount_twd});
+  let provAmt=0;W.forEach(a=>{if(a.provisional)provAmt+=+a.amount_twd||0});
   let unalloc=0;
   DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
-    M.slice(0,6).forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal&&used<cap-1)unalloc++})});
+    M.slice(0,6).forEach(m=>{const{used,cap,active}=loeOf(p.id,m);if(active&&used<cap-1)unalloc++})});
   const openGates=DB.gates.filter(g=>g.status==='open').length;
   const nProp=DB.proposals.filter(x=>x.status==='pending').length;
+  const commonCards=`<div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
+   <div class="card ${nProp?'prov':''}"><div class="l">待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>`;
   let h=`<div class="cards">
-   ${(()=>{const hd=DB.settings.headline;
-     if(hd&&+hd.fy2026_loss_best)return `<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${hd.swap_finalized||''}</div></div>`;
-     return `<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`})()}
-   <div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
-   <div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算</div></div>
-   <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>
-   <div class="card ${nProp?'prov':''}"><div class="l">待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>
+   ${isAdmin()?(()=>{const hd=DB.settings.headline;
+     const c1=hd&&+hd.fy2026_loss_best
+       ?`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
+       :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
+     return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算</div></div>
+   <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
+   ${commonCards}
   </div>
   <div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>
   <div class="tblwrap"><table><thead><tr><th>人員</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
@@ -260,9 +313,8 @@ function vMaster(){
     if(p.id==='tara')return;
     h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
     M.forEach(m=>{
-      const sal=(p.monthly_cost||{})[m]||0;
-      if(!sal){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-      const{used,cap,rows}=loeOf(p.id,m);
+      const{used,cap,rows,active}=loeOf(p.id,m);
+      if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
       const prov=rows.some(a=>a.provisional);
       const hasPend=rows.some(a=>pending[[p.id,m,a.project_id].join('|')]);
       const over=used>cap+0.5;
@@ -326,9 +378,9 @@ function vPerson(pid){
   });
   h+=`<tr><td><b>剩餘容量</b></td>`;
   M.forEach(m=>{
-    const sal=(p.monthly_cost||{})[m]||0;
-    if(!sal){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-    const{used,cap}=loeOf(pid,m);const free=Math.max(0,Math.round(cap-used));
+    const{used,cap,active}=loeOf(pid,m);
+    if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+    const free=Math.max(0,Math.round(cap-used));
     h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
   });
   h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）。</p>';
@@ -406,6 +458,7 @@ window.openEdit=(pid,m,pr)=>{
   const othersLoe=Math.max(0,loeOf(pid,m).used-cur);
   edCtx={pid,m,pr,sal:(p.monthly_cost||{})[m]||0,cap:p.capacity_default,othersLoe};
   document.getElementById('edTitle').textContent=`提案：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||(prmap[pr]&&prmap[pr].name)||pr}`;
+  document.getElementById('edAmt').closest('.row').style.display=isAdmin()?'':'none';
   document.getElementById('edLoe').value=cur;
   document.getElementById('edAuthor').value=localStorage.getItem('cr_author')||'';
   document.getElementById('edNote').value='';
@@ -429,7 +482,7 @@ document.getElementById('edSave').onclick=async()=>{
   localStorage.setItem('cr_author',author);
   const body={author,target_table:'allocations',action:'update',
     target_pk:{person_id:edCtx.pid,month:edCtx.m,project_id:edCtx.pr},
-    payload:{loe_pct:l,amount_twd:Math.round(edCtx.sal/edCtx.cap*l)},
+    payload:isAdmin()?{loe_pct:l,amount_twd:Math.round(edCtx.sal/edCtx.cap*l)}:{loe_pct:l},
     note:document.getElementById('edNote').value.trim()||null};
   let r;
   try{r=await authFetch(SB+'/rest/v1/edit_proposals',{method:'POST',
@@ -443,9 +496,18 @@ document.getElementById('edSave').onclick=async()=>{
 // ---- shell ----
 function route(){
   if(!DB)return;
-  const[page,arg]=(location.hash||'#master').slice(1).split('/');
-  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.startsWith('#'+page)));
-  const T={master:'總表',person:'個人頁',project:'專案頁',amend:'修約與閘門'};
+  let[page,arg]=(location.hash||'#master').slice(1).split('/');
+  if(!isAdmin()){
+    if(page==='project'||page==='amend'){
+      document.getElementById('title').textContent='僅限管理者';
+      document.getElementById('app').innerHTML='<p class="banner err">此頁僅管理者可見。</p>';
+      return;
+    }
+    if(page==='person'&&ROLE.person_id&&arg&&arg!==ROLE.person_id){arg=ROLE.person_id;history.replaceState(null,'','#person/'+arg)}
+    if(page==='person'&&!arg&&ROLE.person_id)arg=ROLE.person_id;
+  }
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+page));
+  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',amend:'修約與閘門'};
   document.getElementById('title').textContent=T[page]||'總表';
   document.getElementById('app').innerHTML=
     (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='amend'?vAmend():vMaster());
@@ -457,6 +519,12 @@ async function reload(msg){
   catch(e){st.textContent='';document.getElementById('app').innerHTML=`<p class="banner err">資料載入失敗：${e.message}。<button class="hbtn" onclick="reload()">重試</button></p>`}
 }
 document.getElementById('refresh').onclick=()=>reload();
+document.getElementById('maskBtn').onclick=()=>{
+  MASK=!MASK;localStorage.setItem('cr_mask',MASK?'1':'0');
+  document.getElementById('maskBtn').textContent=MASK?'🙈 金額':'👁 金額';
+  route();
+};
+if(MASK)document.getElementById('maskBtn').textContent='🙈 金額';
 document.getElementById('theme').onclick=()=>{
   const cur=document.documentElement.dataset.theme||'auto';
   const next=cur==='auto'?'dark':cur==='dark'?'light':'auto';
