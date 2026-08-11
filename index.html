@@ -156,6 +156,12 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div id="fdErr"></div>
   <div class="acts"><button class="btn" id="fdCancel">取消</button><button class="btn primary" id="fdSave">儲存</button></div>
 </dialog>
+
+<dialog id="rwDlg" style="max-width:820px;width:calc(100vw - 60px)">
+  <h3>🌊 存金水位（Runway）</h3>
+  <div class="rwBody"></div>
+  <div class="acts"><button class="btn" onclick="document.getElementById('rwDlg').close()">關閉</button><button class="btn primary" onclick="frmMark()">✎ 更新存金基準</button></div>
+</dialog>
 <script>
 const SB='https://wunwsxapbksqrfthseqz.supabase.co';
 const KEY='sb_publishable_ekm9TwJ7pfZi3OjClaHT8Q_qyJGcPeA';
@@ -591,7 +597,7 @@ window.rejectProposal=id=>openForm('退回提案 #'+id,[{id:'note',label:'退回
 });
 
 // ---- B10: 情境化用人表（staffing）——薪資/容量一律由 ACTIVE 情境讀 ----
-let STAFF={},CTXSCN=null,EXP=[],AUD=[];
+let STAFF={},CTXSCN=null,EXP=[],AUD=[],RESM=[],RCPT=[];
 let AUDF={t:'',a:''};
 window.setAudF=(k,v)=>{AUDF[k]=v;route()}; // CTXSCN：scnMetrics 臨時切換情境用
 function expInt(scnId,m){ // B11: 該情境該月的 internal 福利/非人事（派生＋支出計劃）
@@ -808,6 +814,8 @@ async function loadAll(){
     try{SEALS=await q('report_seals?select=*&order=id')}catch(e){SEALS=[]}
     try{AUD=await q('audit_log?select=*&order=id.desc&limit=200')}catch(e){AUD=[]}
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
+    try{RESM=await q('reserve_marks?select=*&order=as_of.desc,id.desc')}catch(e){RESM=[]}
+    try{RCPT=await q('grant_receipts?select=*&order=expected_month,id')}catch(e){RCPT=[]}
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     SNOTES={};
     try{(await qAll('scenario_notes?select=*&order=id')).forEach(n=>{(SNOTES[n.scenario_id]=SNOTES[n.scenario_id]||[]).push(n)})}catch(e){}
@@ -825,7 +833,7 @@ async function loadAll(){
     try{SEALS=await q('report_seals?select=*&order=id')}catch(e){SEALS=[]}
     proposals=props;
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
-    budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
+    budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];RESM=[];RCPT=[];
     people.forEach(p=>{if(!p.monthly_cost)p.monthly_cost={}});
   }
   const settings={};settingsRows.forEach(r=>settings[r.key]=(r.value&&'v' in r.value&&Object.keys(r.value).length===1)?r.value.v:r.value);
@@ -862,6 +870,115 @@ function lossRange(){
   const q=Array.isArray(s.questionable_benefits)?s.questionable_benefits.reduce((a,x)=>a+(+x.twd||0),0):0;
   return wan(base)+'–'+wan(base+q*0.85);
 }
+// ===== B20 Runway：存金基準／收款追蹤／水位圖 =====
+function toTWD(v,cur){v=+v||0;if(cur==='USD')return v*RATES.USD;if(cur==='EUR')return v*RATES.EUR;return v}
+function latestMark(){if(!RESM.length)return null;
+  return RESM.slice().sort((a,b)=>a.as_of<b.as_of?1:a.as_of>b.as_of?-1:b.id-a.id)[0]}
+function internalSeries(scnId){ // 每月「月合計（帳面，實列）」＝薪資實＋福利＋非人事；暫定另計不入（假想人力不折壽命）
+  const arr=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===scnId);
+  const sv=W,sc=CTXSCN;W=arr;CTXSCN=scnId;
+  const out={};
+  M.forEach(m=>{let sal=0;
+    DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
+      const f=fundOf(p.id,m);if(f.active)sal+=f.internal});
+    const e=expInt(scnId,m);out[m]=sal+e.ben+e.np});
+  W=sv;CTXSCN=sc;return out}
+function runwayOf(scnId){
+  const mk=latestMark();if(!mk)return null;
+  const mkM=mk.as_of.slice(0,7).replace('-','');
+  const ser=internalSeries(scnId);
+  let bal=+mk.amount_twd;const pts=[{m:mkM,bal,burn:0}];
+  let low={m:mkM,bal};let dead=null;
+  M.filter(m=>m>mkM).forEach(m=>{const b=ser[m]||0;bal-=b;pts.push({m,bal,burn:b});
+    if(bal<low.bal)low={m,bal};
+    if(dead===null&&bal<=0)dead=m});
+  const monthsTo=dead?M.filter(m=>m>mkM&&m<=dead).length:null;
+  return{mk,mkM,pts,low,dead,monthsTo,months:pts.length-1}}
+function rwLabel(r){if(!r)return '—';
+  return r.dead?`≈${r.monthsTo} 個月（至 ${ML[r.dead]||r.dead}）`:`＞${r.months} 個月（計劃視窗內未見底）`}
+function rwSVG(r,w,h,big){
+  if(!r||r.pts.length<2)return '';
+  const pad=big?{l:52,r:14,t:14,b:22}:{l:2,r:2,t:3,b:3};
+  const iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  const vals=r.pts.map(p=>p.bal);
+  const ymax=Math.max(...vals,+r.mk.amount_twd),ymin=Math.min(...vals,0);
+  const X=i=>pad.l+iw*i/(r.pts.length-1);
+  const Y=v=>pad.t+ih*(1-(v-ymin)/(ymax-ymin||1));
+  const line=r.pts.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.bal).toFixed(1)}`).join('');
+  let s=`<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%">`;
+  if(ymin<0)s+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--crit)" stroke-dasharray="4 3" stroke-width="1"/>`;
+  if(big){for(let g=1;g<=3;g++){const v=ymin+(ymax-ymin)*g/4;
+    s+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width=".5"/>
+        <text x="${pad.l-6}" y="${Y(v)+4}" text-anchor="end" font-size="10" fill="var(--ink3)">${k(v)}</text>`}
+    const step=Math.max(1,Math.ceil(r.pts.length/9));
+    r.pts.forEach((p,i)=>{if(i%step===0||i===r.pts.length-1)
+      s+=`<text x="${X(i)}" y="${h-6}" text-anchor="middle" font-size="10" fill="var(--ink3)">${i===0?(r.mk.as_of.slice(2,7)):(ML[p.m]||p.m)}</text>`});
+    // 收款標記（不入水位線——grant 款限定用途，只影響墊款）
+    RCPT.forEach(rc=>{const m=(rc.status==='received'&&rc.received_date)?rc.received_date.slice(0,7).replace('-',''):rc.expected_month;
+      const i=r.pts.findIndex(p=>p.m===m);if(i<1)return;
+      const col=rc.status==='received'?'var(--good)':'var(--warn)';
+      s+=`<path d="M${X(i)-5},${pad.t} l10,0 l-5,8 z" fill="${col}"><title>${esc((prmap[rc.project_id]||{}).name||rc.project_id)}｜${rc.status==='received'?'已到帳':'預計'} ${rc.currency} ${k(+rc.amount_orig)}（≈${k(toTWD(rc.amount_orig,rc.currency))}）&#10;grant 款＝限定用途，不加入存金線，只影響該案墊款</title></path>`});
+  }
+  s+=`<path d="${line}" fill="none" stroke="var(--fP)" stroke-width="${big?2:1.5}"/>`;
+  const li=r.pts.findIndex(p=>p.m===r.low.m);
+  if(li>=0)s+=`<circle cx="${X(li)}" cy="${Y(r.low.bal)}" r="${big?4:2.5}" fill="${r.low.bal<0?'var(--crit)':'var(--warn)'}">${big?`<title>最低點 ${ML[r.low.m]||r.low.m}：${k(r.low.bal)}</title>`:''}</circle>`;
+  if(big&&r.dead){const di=r.pts.findIndex(p=>p.m===r.dead);
+    s+=`<line x1="${X(di)}" x2="${X(di)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--crit)" stroke-dasharray="3 3"/>
+        <text x="${X(di)}" y="${pad.t+10}" text-anchor="middle" font-size="10.5" fill="var(--crit)">見底 ${ML[r.dead]||r.dead}</text>`}
+  return s+'</svg>'}
+window.openRunway=()=>{
+  const r=runwayOf(ACTIVE);const dlg=document.getElementById('rwDlg');
+  const hist=RESM.slice(0,6).map(m=>`<tr><td>${m.as_of}</td><td class="num">${k(+m.amount_twd)}</td><td>${esc(m.note||'')}</td><td style="color:var(--ink3)">${esc(m.set_by||'')}</td></tr>`).join('');
+  dlg.querySelector('.rwBody').innerHTML=r
+    ?`<p class="note" style="margin:0 0 6px">基準：<b>${r.mk.as_of}</b> 存金 <b>${k(+r.mk.amount_twd)}</b>${r.mk.note?'（'+esc(r.mk.note)+'）':''}｜情境：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜Runway <b>${rwLabel(r)}</b>｜最低點 ${ML[r.low.m]||r.low.m} ${k(r.low.bal)}</p>
+      ${rwSVG(r,760,280,true)}
+      <p class="note">水位＝基準逐月減「月合計（帳面，實列）」；暫定人力另計不入線。▼＝收款標記（綠＝已到帳、黃＝預計）——grant 款限定用途不加入存金，只影響墊款。基準日當月視為已反映，次月起扣。</p>
+      <h3 style="margin:10px 0 4px">基準歷史（append-only）</h3>
+      <div class="tblwrap"><table><thead><tr><th>基準日</th><th>存金</th><th>備註</th><th>登記者</th></tr></thead><tbody>${hist}</tbody></table></div>`
+    :'<p class="banner">尚未設定存金基準——按下方「✎ 更新存金基準」輸入（例：月結後的存金餘額）。</p>';
+  dlg.showModal()};
+window.frmMark=()=>{document.getElementById('rwDlg').close();
+  openForm('更新存金基準（新增一筆，歷史全留）',[
+  {id:'as_of',label:'基準日',type:'date',value:new Date().toISOString().slice(0,10)},
+  {id:'amt',label:'存金餘額 TWD',type:'number'},
+  {id:'note',label:'備註（例：8月月結後）'},
+],async v=>{
+  if(!v.as_of)throw new Error('基準日必填');
+  if(!(+v.amt>0))throw new Error('存金餘額必填且需為正數');
+  await dbIns('reserve_marks',{as_of:v.as_of,amount_twd:+v.amt,note:v.note||null,set_by:ROLE.email},'');
+  await reload('存金基準已更新（'+v.as_of+'）')})};
+window.frmReceipt=()=>openForm('登記收款（grant 分期）',[
+  {id:'pr',label:'專案',type:'select',value:'ned',options:DB.projects.filter(p=>p.id!=='internal').map(p=>[p.id,p.name])},
+  {id:'m',label:'預計到帳月',type:'month'},
+  {id:'amt',label:'金額（原幣）',type:'number'},
+  {id:'cur',label:'幣別',type:'select',value:'TWD',options:[['TWD','TWD'],['USD','USD'],['EUR','EUR']]},
+  {id:'note',label:'備註（期別/條件）'},
+],async v=>{
+  const m=monthInputToKey(v.m);if(!m)throw new Error('預計到帳月必填');
+  if(!(+v.amt>0))throw new Error('金額必填');
+  await dbIns('grant_receipts',{project_id:v.pr,expected_month:m,amount_orig:+v.amt,currency:v.cur,status:'expected',note:v.note||null},'');
+  await reload('收款排程已登記')});
+window.markReceived=id=>{const r=RCPT.find(x=>x.id===id);if(!r)return;
+  openForm('標記已到帳：'+((prmap[r.project_id]||{}).name||r.project_id)+' '+r.currency+' '+(+r.amount_orig).toLocaleString(),[
+  {id:'d',label:'到帳日',type:'date',value:new Date().toISOString().slice(0,10)},
+],async v=>{
+  if(!v.d)throw new Error('到帳日必填');
+  await dbUpd('grant_receipts','id=eq.'+id,{status:'received',received_date:v.d});
+  await reload('已標記到帳')})};
+function advanceOf(pr){ // 墊款：累計計劃支出（grant 應付部分）vs 累計已到帳，算到本日曆月
+  const nowM=new Date().toISOString().slice(0,7).replace('-','');
+  let planned=0,rec=0;
+  DB.allocations.forEach(a=>{if(a.layer==='working'&&a.scenario_id===OFFICIAL&&a.project_id===pr&&a.month<=nowM)planned+=+a.amount_twd||0});
+  EXP.forEach(e=>{if(e.scenario_id===OFFICIAL&&e.project_id===pr&&e.payer==='grant'&&e.month<=nowM)planned+=+e.amount_twd||0});
+  RCPT.forEach(r=>{if(r.project_id!==pr||r.status!=='received')return;
+    const m=(r.received_date||'').slice(0,7).replace('-','')||r.expected_month;
+    if(m<=nowM)rec+=toTWD(r.amount_orig,r.currency)});
+  return{planned,rec,adv:Math.max(0,planned-rec)}}
+// 理監事科目視圖：分組規則（可調常數）
+const BOARD_MAP=[['benefits','福利費用（勞健退＋年終攤提）'],['租金','租金支出'],['Office','租金支出'],
+  ['差旅','差旅費'],['Travel','差旅費'],['合約','合約/顧問服務費'],['Contractual','合約/顧問服務費'],
+  ['專案費用','專案(活動)費用'],['Proje','專案(活動)費用']];
+const boardCat=c=>{for(const[t,g]of BOARD_MAP)if((c||'').includes(t))return g;return '其他費用'};
 function vMaster(){
   let provAmt=0,provWt=0;
   W.forEach(a=>{if(a.provisional){const v=+a.amount_twd||0;provAmt+=v;
@@ -882,7 +999,11 @@ function vMaster(){
        :hd&&+hd.aug_jan_internal
        ?`<div class="card crit"><div class="l">${hd.label||'存金投入'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
-     return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
+     const rw=runwayOf(ACTIVE);
+     const rwCard=rw
+       ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l">Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
+       :`<div class="card click" onclick="openRunway()"><div class="l">Runway（存金壽命）</div><div class="v num" style="font-size:17px">未設定基準</div><div class="s">點此設定存金基準後啟用水位圖</div></div>`;
+     return c1+rwCard+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
@@ -1455,6 +1576,11 @@ function vCompare(cmpId){
       <tr><td><b>帳面合計</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
     <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
+    ${(()=>{const ro=runwayOf(baseId),rd2=runwayOf(targetId);if(!ro||!rd2)return '';
+      const n=r=>r.dead?r.monthsTo:r.months; // 未見底＝以視窗長度計（下限）
+      const d=n(rd2)-n(ro);
+      const dTxt=d>0?`<span style="color:var(--good)">▲多活 ${d} 個月${!rd2.dead||!ro.dead?'（下限）':''}</span>`:d<0?`<span style="color:var(--crit)">▼少活 ${-d} 個月</span>`:'—';
+      return `<tr><td>Runway（存金壽命）</td><td class="num">${rwLabel(ro)}</td><td class="num">${rwLabel(rd2)}</td><td class="num">${dTxt}</td></tr>`})()}
   </tbody></table></div>`;
   const sd=staffDiff(baseId,targetId);
   if(sd.length){
@@ -1513,6 +1639,32 @@ function vAmend(){
   </tbody></table></div>
   <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
   <span class="note" style="margin:0">登記後該期間各格出現 🔒；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
+  ${isAdmin()?(()=>{ // B20：收款排程＋墊款警示
+    const byPr={};RCPT.forEach(r=>{(byPr[r.project_id]=byPr[r.project_id]||[]).push(r)});
+    const rows=Object.keys(byPr).map(pr=>{
+      const a=advanceOf(pr);
+      const advTag=a.adv>500?`<div class="banner" style="margin:4px 0;border-color:var(--warn);color:var(--warn)">⚠ 墊款中 ≈${k(a.adv)}（至本月：計劃累計支出 ${k(a.planned)} − 已到帳 ${k(a.rec)}）——grant 未到帳前由存金先墊</div>`:'';
+      return `<tr><td colspan=7 style="padding:8px 6px 2px"><b style="color:var(${PC[pr]||'--ink'})">${esc((prmap[pr]||{}).name||pr)}</b>${advTag}</td></tr>`+
+        byPr[pr].map(r=>`<tr><td></td><td class="num">${+r.expected_month.slice(0,4)}/${+r.expected_month.slice(4)}</td><td class="num">${r.currency} ${(+r.amount_orig).toLocaleString()}</td><td class="num">≈${k(toTWD(r.amount_orig,r.currency))}</td><td><span class="pill ${r.status==='received'?'applied':'pending'}">${r.status==='received'?'已到帳 '+(r.received_date||''):'預計'}</span></td><td>${esc(r.note||'')}</td><td>${r.status==='expected'?`<button class="miniact ok" onclick="markReceived(${r.id})">✓ 已到帳</button>`:''}</td></tr>`).join('');
+    }).join('');
+    return `<h2>💰 收款排程（grant 分期）</h2><div class="tblwrap"><table><thead><tr><th></th><th>預計月</th><th>金額(原幣)</th><th>≈TWD</th><th>狀態</th><th>備註</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan=7>尚未登記任何收款排程</td></tr>'}</tbody></table></div>
+    <div style="margin:-6px 0 14px"><button class="hbtn" onclick="frmReceipt()">＋登記收款</button>
+    <span class="note" style="margin:0">墊款＝該案累計計劃支出＞累計已到帳的部分；grant 款限定用途，不加入存金水位線。</span></div>`})():''}
+  ${isAdmin()?(()=>{ // B20：理監事科目視圖（板會口徑；資料 member 本可讀，本頁路由屬 admin——要開放給 member 時搬區塊即可）
+    const g={};let sT=0,sI=0;
+    DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
+      M.forEach(m=>{const f=fundOf(p.id,m);if(!f.active)return;sT+=f.sal;sI+=f.internal})});
+    EXP.forEach(e=>{if(e.scenario_id!==ACTIVE)return;const c=boardCat(e.category);
+      g[c]=g[c]||{t:0,g:0,i:0};g[c].t+=+e.amount_twd;
+      if(e.payer==='internal')g[c].i+=+e.amount_twd;else g[c].g+=+e.amount_twd});
+    const rows=[[`薪資支出（人事）`,sT,sT-sI,sI],...Object.keys(g).sort().map(c=>[c,g[c].t,g[c].g,g[c].i])];
+    const tot=rows.reduce((a,r)=>[null,a[1]+r[1],a[2]+r[2],a[3]+r[3]],[null,0,0,0]);
+    return `<h2>🏛 理監事科目視圖（${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜全時間軸）</h2>
+    <div class="tblwrap"><table><thead><tr><th>會計科目</th><th>合計</th><th>grant 支付</th><th>存金支付</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${r[0]}</td><td class="num">${k(r[1])||'0'}</td><td class="num">${k(r[2])||'0'}</td><td class="num">${k(r[3])||'0'}</td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${k(tot[1])}</b></td><td class="num"><b>${k(tot[2])}</b></td><td class="num"><b>${k(tot[3])}</b></td></tr>
+    </tbody></table></div>
+    <p class="note">分組規則＝程式內 BOARD_MAP 常數（category 關鍵字對照，可調）；薪資列＝用人表口徑（grant 份＝薪資−存金份）。</p>`})():''}
   ${isAdmin()?(()=>{
     const rows=AUD.filter(x=>(!AUDF.t||x.table_name===AUDF.t)&&(!AUDF.a||String(x.actor||'').includes(AUDF.a)));
     const tables=[...new Set(AUD.map(x=>x.table_name))];
