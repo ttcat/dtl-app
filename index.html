@@ -5,12 +5,40 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DTL 控制室</title>
 <style>
-:root{--paper:#FCFCFB;--ink:#1C1E26;--ink2:#5B6070;--ink3:#9BA0AE;--card:#FFF;--line:#E7E7E4;--rail:#F4F4F1;
---fN:#2563eb;--fDI:#d97706;--fSE:#db2777;--fH:#7c3aed;--fO:#0d9488;--fP:#64748b;
---good:#15803d;--warn:#b45309;--crit:#dc2626;--focus:#2563eb}
-@media(prefers-color-scheme:dark){:root{--paper:#17181C;--ink:#E8E9ED;--ink2:#A6AAB6;--ink3:#6B7080;--card:#1F2127;--line:#2E3138;--rail:#1B1C21;--fN:#3b82f6;--fSE:#ec4899;--fH:#8b5cf6;--good:#4ade80;--warn:#fbbf24;--crit:#f87171}}
-:root[data-theme=dark]{--paper:#17181C;--ink:#E8E9ED;--ink2:#A6AAB6;--ink3:#6B7080;--card:#1F2127;--line:#2E3138;--rail:#1B1C21;--fN:#3b82f6;--fSE:#ec4899;--fH:#8b5cf6;--good:#4ade80;--warn:#fbbf24;--crit:#f87171}
-:root[data-theme=light]{--paper:#FCFCFB;--ink:#1C1E26;--ink2:#5B6070;--ink3:#9BA0AE;--card:#FFF;--line:#E7E7E4;--rail:#F4F4F1;--fN:#2563eb;--fSE:#db2777;--fH:#7c3aed;--good:#15803d;--warn:#b45309;--crit:#dc2626}
+/* ===== B21 主題系統：全站只吃 token；三主題＝base-light／base-dark／classic ===== */
+:root{ /* fallback＝Base 亮（JS 於 head 早期即正規化 data-theme，無 FOUC） */
+--paper:#FFFFFF;--card:#FFFFFF;--rail:#F3F3F3;--line:#E2E2E2;--line2:#000000;
+--ink:#000000;--ink2:#545454;--ink3:#A6A6A6;
+--fN:#2a78d6;--fDI:#e05a24;--fSE:#12855d;--fH:#8a4fd8;--fO:#a87200;--fP:#8a8a8a;
+--good:#166C3B;--warn:#9F6402;--crit:#BB032A;--focus:#2a78d6;
+--btn:#000000;--btn-ink:#FFFFFF;--btn-h:#282828;--r:0px;--rb:999px;--kv:30px}
+:root[data-theme=base-light]{
+--paper:#FFFFFF;--card:#FFFFFF;--rail:#F3F3F3;--line:#E2E2E2;--line2:#000000;
+--ink:#000000;--ink2:#545454;--ink3:#A6A6A6;
+--fN:#2a78d6;--fDI:#e05a24;--fSE:#12855d;--fH:#8a4fd8;--fO:#a87200;--fP:#8a8a8a;
+--good:#166C3B;--warn:#9F6402;--crit:#BB032A;--focus:#2a78d6;
+--btn:#000000;--btn-ink:#FFFFFF;--btn-h:#282828;--r:0px;--rb:999px;--kv:30px}
+:root[data-theme=base-dark]{
+--paper:#0B0B0B;--card:#0B0B0B;--rail:#161616;--line:#292929;--line2:#FFFFFF;
+--ink:#FFFFFF;--ink2:#ABABAB;--ink3:#6E6E6E;
+--fN:#3987e5;--fDI:#d95926;--fSE:#1fa878;--fH:#9865e6;--fO:#c98500;--fP:#8a8a8a;
+--good:#5CBD87;--warn:#D9A845;--crit:#e35573;--focus:#3987e5;
+--btn:#FFFFFF;--btn-ink:#000000;--btn-h:#D6D6D6;--r:0px;--rb:999px;--kv:30px}
+:root[data-theme=classic],:root[data-theme=dark]{ /* 經典深色（回退保險；dark 為舊值別名） */
+--paper:#17181C;--card:#1F2127;--rail:#1B1C21;--line:#2E3138;--line2:#2E3138;
+--ink:#E8E9ED;--ink2:#A6AAB6;--ink3:#6B7080;
+--fN:#3b82f6;--fDI:#d97706;--fSE:#ec4899;--fH:#8b5cf6;--fO:#0d9488;--fP:#64748b;
+--good:#4ade80;--warn:#fbbf24;--crit:#f87171;--focus:#3b82f6;
+--btn:#1F2127;--btn-ink:#E8E9ED;--btn-h:#2E3138;--r:8px;--rb:6px;--kv:20px}
+/* Base 結構規則（classic 不套用） */
+:root[data-theme^=base] th{text-transform:uppercase;letter-spacing:.04em;border-bottom-width:2px;border-bottom-color:var(--line2)}
+:root[data-theme^=base] .card{box-shadow:none}
+:root[data-theme^=base] .rule-strong{border-color:var(--line2)}
+:root[data-theme^=base] tr.grand td{border-top:2px solid var(--line2);border-bottom:3px double var(--line2)}
+:root[data-theme=classic] tr.grand td,:root[data-theme=dark] tr.grand td{border-top:2px solid var(--crit)}
+:root[data-theme^=base] .btn{border-radius:var(--rb);font-weight:700}
+:root[data-theme^=base] .btn.primary{border:2px solid var(--btn)}
+.icon{width:14px;height:14px;}.icon.sm{width:11px;height:11px}.icon{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2.5px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 "PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
 .num{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
@@ -20,14 +48,14 @@ h1{margin:0;font-size:16px;font-weight:700}
 nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
 nav a{padding:6px 12px;border-radius:6px;color:var(--ink2);text-decoration:none;font-size:13px}
 nav a.on{background:var(--ink);color:var(--paper);font-weight:600}
-.hbtn{border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+.hbtn{border:1.5px solid var(--line2);background:var(--card);color:var(--ink);border-radius:var(--rb);padding:5px 12px;font-size:12px;cursor:pointer}.hbtn:hover{background:var(--rail)}
 main{padding:16px 18px;max-width:1280px;margin:0 auto}
 h2{font-size:15px;margin:4px 0 10px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-.card .l{font-size:11px;color:var(--ink2)}.card .v{font-size:20px;font-weight:700}.card .s{font-size:11px;color:var(--ink3)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.card .l{font-size:11px;color:var(--ink2)}.card .v{font-size:var(--kv);font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.card .s{font-size:11px;color:var(--ink3)}
 .card.prov{border-style:dashed}.card.crit .v{color:var(--crit)}
-.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:16px}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--card);margin-bottom:16px}
 table{border-collapse:collapse;width:100%;font-size:12.5px}
 th{font-size:11px;color:var(--ink2);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--card)}
 td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -55,7 +83,7 @@ tr.click:hover td:first-child{background:var(--rail)}
 .introw td{border-top:2px solid var(--line);color:var(--crit);font-weight:600}
 #edErr,#fdErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
 .capEdit{cursor:pointer}.capEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
-.miniact{border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:5px;padding:2px 8px;font-size:11.5px;cursor:pointer;margin-right:4px}
+.miniact{border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:var(--rb);padding:2px 9px;font-size:11.5px;cursor:pointer;margin-right:4px}
 .miniact.ok{color:var(--good);border-color:var(--good)}.miniact.no{color:var(--crit);border-color:var(--crit)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .uEdit{cursor:pointer} .uEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
@@ -80,16 +108,16 @@ input:focus,select:focus,button:focus,a:focus{outline:2px solid var(--focus);out
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--fN);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
-dialog{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:18px;max-width:340px;width:92vw}
+dialog{background:var(--card);color:var(--ink);border:1.5px solid var(--line2);border-radius:var(--r);padding:18px;max-width:340px;width:92vw}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog h3{margin:0 0 10px;font-size:14px}
 dialog .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:13px}
 dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
-.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
-.btn.primary{background:var(--fN);border-color:var(--fN);color:#fff}
-.mysum{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--fN);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13.5px;line-height:1.7}
+.btn{border:1.5px solid var(--line2);background:var(--card);color:var(--ink);border-radius:var(--rb);padding:6px 16px;font-size:13px;cursor:pointer}.btn:hover{background:var(--rail)}
+.btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btn-ink)}.btn.primary:hover{background:var(--btn-h);border-color:var(--btn-h)}
+.mysum{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--fN);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:13.5px;line-height:1.7}
 #login{max-width:360px;margin:12vh auto;padding:0 16px}
-#login .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:26px}
+#login .box{background:var(--card);border:1.5px solid var(--line2);border-radius:var(--r);padding:26px}
 #login h2{margin:0 0 6px;font-size:17px}
 #login p{font-size:13px;color:var(--ink2);margin:0 0 16px}
 #login input[type=email],#login input[type=password]{width:100%;padding:9px 10px;font-size:14px;margin-bottom:10px}
@@ -98,15 +126,36 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 #login .msg.err{color:var(--crit)}
 @media(max-width:640px){.cell{min-width:34px;padding:2px 2px;font-size:11px}td,th{padding:4px 5px}main{padding:10px 8px}}
 </style>
+<script>/* B21 主題早期正規化：一律落到 base-light/base-dark/classic 三值之一 */
+(function(){var t=localStorage.getItem('cr_theme')||'base-auto';
+if(t==='dark')t='classic';if(t==='light')t='base-light';if(t==='auto')t='base-auto';
+function ap(v){document.documentElement.dataset.theme=(v==='base-auto')?(matchMedia('(prefers-color-scheme: dark)').matches?'base-dark':'base-light'):v}
+ap(t);window.__themePref=t;
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){if(window.__themePref==='base-auto')ap('base-auto')});})();
+</script>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.2 14.6 13.4H1.4Z M8 6.6v3.2 M8 12.1v.1"/></symbol>
+<symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1"/><path d="M5.3 7V5a2.7 2.7 0 0 1 5.4 0v2"/></symbol>
+<symbol id="i-cam" viewBox="0 0 16 16"><rect x="2" y="4.6" width="12" height="8.8" rx="1"/><circle cx="8" cy="9" r="2.4"/><path d="M5.6 4.6 6.7 2.8h2.6l1.1 1.8"/></symbol>
+<symbol id="i-cal" viewBox="0 0 16 16"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx="1"/><path d="M2.2 6.6h11.6 M5.4 2v2.4 M10.6 2v2.4"/></symbol>
+<symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.4" r="2.7"/><path d="M2.8 13.6a5.2 5.2 0 0 1 10.4 0"/></symbol>
+<symbol id="i-trend" viewBox="0 0 16 16"><path d="M2 12.6 6.2 8.4l2.6 2.6L14 5.6 M10.6 5.6H14v3.4"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.2 8.3l1.9 1.9 3.7-4"/></symbol>
+<symbol id="i-pen" viewBox="0 0 16 16"><path d="M3 13h2.6L13 5.6 10.4 3 3 10.4Z M9.3 4.1l2.6 2.6"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 16 16"><path d="M8.8 1.8 3.4 9h3.4l-.6 5.2L11.6 7H8.2Z"/></symbol>
+<symbol id="i-coin" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v6.8 M10.3 6.2c0-1-1-1.6-2.3-1.6s-2.3.6-2.3 1.5c0 2.2 4.6.9 4.6 3.1 0 .9-1 1.5-2.3 1.5s-2.3-.6-2.3-1.6"/></symbol>
+<symbol id="i-book" viewBox="0 0 16 16"><path d="M8 3.4C6.8 2.5 4.8 2.2 2.6 2.4v10.4c2.2-.2 4.2.1 5.4 1 1.2-.9 3.2-1.2 5.4-1V2.4c-2.2-.2-4.2.1-5.4 1Z M8 3.4v10.4"/></symbol>
+<symbol id="i-bank" viewBox="0 0 16 16"><path d="M2 6.2 8 2.6l6 3.6 M2.8 6.4h10.4 M4 6.6v5.2 M8 6.6v5.2 M12 6.6v5.2 M2.4 13.4h11.2"/></symbol>
+</defs></svg>
 <header>
   <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
   <span id="status" class="note" style="margin:0"></span>
   <nav id="nav">
     <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">專案</a><a href="#lines">職務</a><a href="#scenarios">提案</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
-    <button class="hbtn" id="theme" title="切換主題">◐</button>
+    <select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select>
     <select class="hbtn" id="scnSel" title="情境：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
     <button class="hbtn" id="scnNew" title="開新情境（複製正式版成你的沙盒）" style="display:none" onclick="frmScn()">＋情境</button>
     <select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select>
@@ -142,7 +191,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 </dialog>
 
 <dialog id="sealDlg">
-  <h3>🔒 觸及已送財報期間</h3>
+  <h3><svg class="icon"><use href="#i-lock"/></svg> 觸及已送財報期間</h3>
   <div id="sealMsg" style="color:var(--crit);font-size:13px;line-height:1.6;margin-bottom:10px"></div>
   <div class="row"><span>修改原因*</span><input type="text" id="sealReason" style="width:180px" placeholder="必填"></div>
   <div class="row"><span>輸入 YES 放行</span><input type="text" id="sealYes" style="width:180px" placeholder="YES"></div>
@@ -158,9 +207,9 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 </dialog>
 
 <dialog id="rwDlg" style="max-width:820px;width:calc(100vw - 60px)">
-  <h3>🌊 存金水位（Runway）</h3>
+  <h3><svg class="icon"><use href="#i-bolt"/></svg> 存金水位（Runway）</h3>
   <div class="rwBody"></div>
-  <div class="acts"><button class="btn" onclick="document.getElementById('rwDlg').close()">關閉</button><button class="btn primary" onclick="frmMark()">✎ 更新存金基準</button></div>
+  <div class="acts"><button class="btn" onclick="document.getElementById('rwDlg').close()">關閉</button><button class="btn primary" onclick="frmMark()"><svg class="icon"><use href="#i-pen"/></svg> 更新存金基準</button></div>
 </dialog>
 <script>
 const SB='https://wunwsxapbksqrfthseqz.supabase.co';
@@ -249,7 +298,7 @@ const draftBanner=()=>{
 // ---- B15: 財報封印 ----
 let SEALS=[];
 function sealOf(pr,m){return SEALS.find(s=>s.project_id===pr&&s.period_start<=m&&m<=s.period_end)||null}
-const sealMark=(pr,m)=>{const s=sealOf(pr,m);return s?'🔒':''};
+const sealMark=(pr,m)=>{const s=sealOf(pr,m);return s?'<svg class="icon sm"><use href="#i-lock"/></svg>':''};
 const sealTip=(pr,m)=>{const s=sealOf(pr,m);return s?`&#10;🔒 已入「${esc(s.report_name)}」（${s.submitted_at} 送出）——此段已定`:''};
 function sealConfirm(hits,ctx){ // hits=[{pr,m,seal}]；回傳 Promise<{go,reason}>
   return new Promise(res=>{
@@ -649,7 +698,7 @@ window.toggNote=(nid,btn)=>{const el=document.getElementById(nid);if(!el)return;
 function notesDigest(scope,id,label){ // B16: 逐月完整多段陳列（同事主要閱讀區）
   const items=M.map(m=>({m,nt:noteOf(scope,id,m)})).filter(x=>x.nt);
   if(!items.length)return '';
-  return `<h2>📖 ${label}重點總覽</h2><div class="mysum" style="border-left-color:var(--fN)">${items.map(x=>
+  return `<h2><svg class="icon"><use href="#i-book"/></svg> ${label}重點總覽</h2><div class="mysum" style="border-left-color:var(--fN)">${items.map(x=>
     `<div style="margin:0 0 12px"><b class="num" style="color:var(--fN)">${ML[x.m]||x.m}</b><div style="white-space:pre-wrap;margin-top:3px">${esc(x.nt)}</div></div>`).join('')}</div>`;
 }
 // ---- B5: 職務線 ↔ 在座者 對映 ----
@@ -1022,24 +1071,24 @@ function vMaster(){
     PLANB().forEach(m=>{const{used,cap,active}=loeOf(p.id,m);if(active&&used<cap-1)unalloc++})});
   const openGates=DB.gates.filter(g=>g.status==='open').length;
   const nProp=DB.proposals.filter(x=>x.status==='pending').length;
-  const commonCards=`<div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
-   <div class="card ${nProp?'prov':''}"><div class="l">待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>`;
+  const commonCards=`<div class="card"><div class="l"><svg class="icon"><use href="#i-user"/></svg> 未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
+   <div class="card ${nProp?'prov':''}"><div class="l"><svg class="icon"><use href="#i-pen"/></svg> 待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>`;
   let h=`<div class="cards">
    ${isAdmin()?(()=>{
      const scnH=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;
      const hd=scnH||DB.settings.headline;
      const c1=hd&&+hd.fy2026_loss_best
-       ?`<div class="card"><div class="l">${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
+       ?`<div class="card"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> ${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
        :hd&&+hd.aug_jan_internal
        ?`<div class="card crit"><div class="l">${hd.label||'存金投入'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
      const rw=runwayOf(ACTIVE);
      const rwCard=rw
-       ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l">Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
+       ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l"><svg class="icon"><use href="#i-bolt"/></svg> Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
        :(()=>{const c=cumOf(ACTIVE);
-         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l">累計存金投入（H1 交換後＋計劃）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b></div>${cumSVG(c,210,34,false)}</div>`})();
+         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 累計存金投入（H1 交換後＋計劃）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b></div>${cumSVG(c,210,34,false)}</div>`})();
      return c1+rwCard+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
-   <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
+   <div class="card ${openGates?'crit':''}"><div class="l"><svg class="icon"><use href="#i-cal"/></svg> 開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
   ${isAdmin()?`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><div class="seg" style="width:220px"><button class="${VIEW==='load'?'on':''}" onclick="setView('load')">負載視圖</button><button class="${VIEW==='fund'?'on':''}" onclick="setView('fund')">資金視圖</button></div><button class="hbtn" onclick="frmPerson()">＋新增同事</button></div>`:''}
@@ -1093,7 +1142,7 @@ function vMaster(){
     if(M.some(m=>eN[m]>500))
       h+=`<tr class="introw"><td><b style="font-weight:600">非人事·存金投入（支出計劃）</b></td>${M.map(m=>`<td><span class="cell num">${eN[m]>500?k(eN[m]):'0'}</span></td>`).join('')}</tr>`;
     const tot={};let grand=0;M.forEach(m=>{tot[m]=intMonth[m]+eB[m]+eN[m];grand+=tot[m]});
-    h+=`<tr class="introw" style="border-top:2px solid var(--crit)"><td><b>月合計（帳面）</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
+    h+=`<tr class="introw grand"><td><b>月合計（帳面）</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
     var fundGrand=grand; // 供下方對帳註記
   }
   h+='</tbody></table></div>';
@@ -1678,11 +1727,11 @@ function vAmend(){
   <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
   ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
   </tbody></table></div>
-  <h2>🔒 財報封印</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
+  <h2><svg class="icon"><use href="#i-lock"/></svg> 財報封印</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
   ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——第一份送出當天請在此登記</td></tr>'}
   </tbody></table></div>
   <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
-  <span class="note" style="margin:0">登記後該期間各格出現 🔒；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
+  <span class="note" style="margin:0">登記後該期間各格出現 <svg class="icon sm"><use href="#i-lock"/></svg>；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
   ${isAdmin()?(()=>{ // B20：收款排程＋墊款警示
     const byPr={};RCPT.forEach(r=>{(byPr[r.project_id]=byPr[r.project_id]||[]).push(r)});
     const rows=Object.keys(byPr).map(pr=>{
@@ -1691,7 +1740,7 @@ function vAmend(){
       return `<tr><td colspan=7 style="padding:8px 6px 2px"><b style="color:var(${PC[pr]||'--ink'})">${esc((prmap[pr]||{}).name||pr)}</b>${advTag}</td></tr>`+
         byPr[pr].map(r=>`<tr><td></td><td class="num">${+r.expected_month.slice(0,4)}/${+r.expected_month.slice(4)}</td><td class="num">${r.currency} ${(+r.amount_orig).toLocaleString()}</td><td class="num">≈${k(toTWD(r.amount_orig,r.currency))}</td><td><span class="pill ${r.status==='received'?'applied':'pending'}">${r.status==='received'?'已到帳 '+(r.received_date||''):'預計'}</span></td><td>${esc(r.note||'')}</td><td>${r.status==='expected'?`<button class="miniact ok" onclick="markReceived(${r.id})">✓ 已到帳</button>`:''}</td></tr>`).join('');
     }).join('');
-    return `<h2>💰 收款排程（grant 分期）</h2><div class="tblwrap"><table><thead><tr><th></th><th>預計月</th><th>金額(原幣)</th><th>≈TWD</th><th>狀態</th><th>備註</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan=7>尚未登記任何收款排程</td></tr>'}</tbody></table></div>
+    return `<h2><svg class="icon"><use href="#i-coin"/></svg> 收款排程（grant 分期）</h2><div class="tblwrap"><table><thead><tr><th></th><th>預計月</th><th>金額(原幣)</th><th>≈TWD</th><th>狀態</th><th>備註</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan=7>尚未登記任何收款排程</td></tr>'}</tbody></table></div>
     <div style="margin:-6px 0 14px"><button class="hbtn" onclick="frmReceipt()">＋登記收款</button>
     <span class="note" style="margin:0">墊款＝該案累計計劃支出＞累計已到帳的部分；grant 款限定用途，不加入存金水位線。</span></div>`})():''}
   ${isAdmin()?(()=>{ // B20：理監事科目視圖（板會口徑；資料 member 本可讀，本頁路由屬 admin——要開放給 member 時搬區塊即可）
@@ -1703,7 +1752,7 @@ function vAmend(){
       if(e.payer==='internal')g[c].i+=+e.amount_twd;else g[c].g+=+e.amount_twd});
     const rows=[[`薪資支出（人事）`,sT,sT-sI,sI],...Object.keys(g).sort().map(c=>[c,g[c].t,g[c].g,g[c].i])];
     const tot=rows.reduce((a,r)=>[null,a[1]+r[1],a[2]+r[2],a[3]+r[3]],[null,0,0,0]);
-    return `<h2>🏛 理監事科目視圖（${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜全時間軸）</h2>
+    return `<h2><svg class="icon"><use href="#i-bank"/></svg> 理監事科目視圖（${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜全時間軸）</h2>
     <div class="tblwrap"><table><thead><tr><th>會計科目</th><th>合計</th><th>grant 支付</th><th>存金支付</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td>${r[0]}</td><td class="num">${k(r[1])||'0'}</td><td class="num">${k(r[2])||'0'}</td><td class="num">${k(r[3])||'0'}</td></tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${k(tot[1])}</b></td><td class="num"><b>${k(tot[2])}</b></td><td class="num"><b>${k(tot[3])}</b></td></tr>
@@ -1712,7 +1761,7 @@ function vAmend(){
   ${isAdmin()?(()=>{
     const rows=AUD.filter(x=>(!AUDF.t||x.table_name===AUDF.t)&&(!AUDF.a||String(x.actor||'').includes(AUDF.a)));
     const tables=[...new Set(AUD.map(x=>x.table_name))];
-    return `<h2>🧾 稽核紀錄（最近 ${AUD.length} 筆）</h2>
+    return `<h2><svg class="icon"><use href="#i-cal"/></svg> 稽核紀錄（最近 ${AUD.length} 筆）</h2>
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <select onchange="setAudF('t',this.value)"><option value="">全部表</option>${tables.map(t=>`<option ${AUDF.t===t?'selected':''}>${t}</option>`).join('')}</select>
       <input type="text" placeholder="篩操作者" value="${esc(AUDF.a)}" onchange="setAudF('a',this.value)" style="width:130px">
@@ -1848,13 +1897,9 @@ document.getElementById('maskBtn').onclick=()=>{
   route();
 };
 if(MASK)document.getElementById('maskBtn').textContent='🙈 金額';
-document.getElementById('theme').onclick=()=>{
-  const cur=document.documentElement.dataset.theme||'auto';
-  const next=cur==='auto'?'dark':cur==='dark'?'light':'auto';
-  if(next==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=next;
-  localStorage.setItem('cr_theme',next);
-};
-const th=localStorage.getItem('cr_theme');if(th&&th!=='auto')document.documentElement.dataset.theme=th;
+window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);
+  document.documentElement.dataset.theme=(v==='base-auto')?(matchMedia('(prefers-color-scheme: dark)').matches?'base-dark':'base-light'):v};
+document.getElementById('theme').value=window.__themePref||'base-auto';
 addEventListener('hashchange',route);
 // ---------- boot ----------
 loadSes();
