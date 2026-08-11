@@ -691,7 +691,7 @@ function vMaster(){
      const c1=hd&&+hd.fy2026_loss_best
        ?`<div class="card"><div class="l">${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
        :hd&&+hd.aug_jan_internal
-       ?`<div class="card crit"><div class="l">${hd.label||'存金失血'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
+       ?`<div class="card crit"><div class="l">${hd.label||'存金投入'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
      return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
@@ -738,21 +738,21 @@ function vMaster(){
     h+='</tr>';
   });
   if(fund){
-    h+=`<tr class="introw"><td><b>薪資存金（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+    h+=`<tr class="introw"><td><b>薪資·存金投入（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>provMonth[m]>500))
-      h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">暫定人力存金（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+      h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">暫定人力·存金投入（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     const eB={},eN={};M.forEach(m=>{const e=expInt(ACTIVE,m);eB[m]=e.ben;eN[m]=e.np});
     if(M.some(m=>eB[m]>500))
-      h+=`<tr class="introw"><td><b style="font-weight:600">福利存金（模型派生）</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
+      h+=`<tr class="introw"><td><b style="font-weight:600">福利·存金投入（模型派生）</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>eN[m]>500))
-      h+=`<tr class="introw"><td><b style="font-weight:600">非人事存金（支出計劃）</b></td>${M.map(m=>`<td><span class="cell num">${eN[m]>500?k(eN[m]):'0'}</span></td>`).join('')}</tr>`;
+      h+=`<tr class="introw"><td><b style="font-weight:600">非人事·存金投入（支出計劃）</b></td>${M.map(m=>`<td><span class="cell num">${eN[m]>500?k(eN[m]):'0'}</span></td>`).join('')}</tr>`;
     const tot={};let grand=0;M.forEach(m=>{tot[m]=intMonth[m]+eB[m]+eN[m];grand+=tot[m]});
     h+=`<tr class="introw" style="border-top:2px solid var(--crit)"><td><b>月合計（帳面）</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
     var fundGrand=grand; // 供下方對帳註記
   }
   h+='</tbody></table></div>';
   h+=fund
-    ?`<p class="note">資金視圖：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&+hd.aug_jan_internal))return '';
+    ?`<p class="note">資金視圖（資金水位）：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&+hd.aug_jan_internal))return '';
       const AJ=M.filter(m=>m>='202608'&&m<='202701');
       const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
       const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
@@ -959,7 +959,8 @@ function vLines(){
     const seats=lineSeats(b);
     const isPers=PERSCAT.includes(b.category);
     const mapped=b.project_id==='ned'||DB.budget_lines.filter(x=>x.project_id===b.project_id).length===1;
-    const vacant=rem>0&&mapped&&isPers&&seats.length===0&&!b.ring_fence; // D10: 非人事線不算空缺財源
+    const projHasAlloc=W.some(a=>a.project_id===b.project_id);
+    const vacant=rem>0&&isPers&&!b.ring_fence&&((mapped&&seats.length===0)||!projHasAlloc); // D10＋B12: 全案零配置＝各人事線皆空缺（新案）
     const st=over?['超','rejected']:vacant?['缺','pending']:['滿','approved'];
     if(LF==='vacant'&&!vacant)return;if(LF==='over'&&!over)return;
     n++;
@@ -1122,10 +1123,10 @@ function scnCard(s,mx){
   return h;
 }
 function vScenarios(){
-  const head=`<thead><tr><th>提案/情境</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金失血</th><th>超容量</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
+  const head=`<thead><tr><th>提案/情境</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金投入</th><th>超容量</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
   const act=[...SCNS].filter(s=>s.status!=='archived').sort((a,b)=>(a.status==='official'?-1:1)-(b.status==='official'?-1:1));
   const arc=SCNS.filter(s=>s.status==='archived');
-  let h=`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金失血＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
+  let h=`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金投入＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
   <div class="tblwrap"><table>${head}<tbody>`;
   act.forEach(s=>{h+=scnCard(s,scnMetrics(scnRowsOf(s.id),s.id))});
   h+='</tbody></table></div>';
