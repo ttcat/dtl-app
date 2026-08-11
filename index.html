@@ -71,6 +71,8 @@ td.click{cursor:pointer} td.click:hover{background:var(--rail)}
 .fY{background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warn);font-weight:600}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
+.uAct{background:var(--rail);color:var(--ink2);outline:1px solid var(--line);outline-offset:-1px;cursor:not-allowed}
+.uAct.fY,.uAct.fR{color:var(--ink2)}
 .uFar{outline:1.5px dashed var(--fP);outline-offset:-1.5px;opacity:.82}
 .noteBox{white-space:pre-wrap;font-size:11.5px;line-height:1.55;min-width:120px;max-width:240px;text-align:left;border-radius:4px;padding:3px 5px;background:var(--rail)}
 .noteBox.clamp{max-height:8.6em;overflow:hidden}
@@ -238,7 +240,9 @@ let M=[],ML={},FARM='999912';
 const mAdd=(m,n)=>{let y=+m.slice(0,4),mo=+m.slice(4)-1+n;y+=Math.floor(mo/12);mo=((mo%12)+12)%12;return y+String(mo+1).padStart(2,'0')};
 const nowMonth=()=>{const d=new Date();return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')};
 function buildTimeline(){
-  let end='202706';
+  let end='202706',start='202608';
+  (DB.allocations||[]).forEach(a=>{if(a.layer==='actual'&&a.month<start)start=a.month}); // B23：往前長到最早的已發生月份
+  (EXP||[]).forEach(e=>{if(e.scenario_id==='ACTUAL'&&e.month<start)start=e.month});
   (DB.projects||[]).forEach(p=>{
     const mm=String(p.period||'').match(/,(\d{4})-(\d{2})-(\d{2})[\)\]]/);
     if(!mm)return;
@@ -247,11 +251,19 @@ function buildTimeline(){
     if(em>end)end=em;
   });
   (DB.allocations||[]).forEach(a=>{if(a.month>end)end=a.month});
-  M=[];let m='202608';
+  M=[];let m=start;
   while(m<=end&&M.length<120){M.push(m);m=mAdd(m,1)}
   ML={};M.forEach(x=>ML[x]=((x.slice(4)==='01'||x===M[0])?(+x.slice(0,4))+'年':'')+(+x.slice(4))+'月');
   FARM=mAdd(nowMonth(),12); // 超過未來 12 個月 ＝ 遠期規劃假設
 }
+const ACTUALS=()=>DB.allocations.filter(a=>a.layer==='actual');
+let ACT_FROM='202608',ACT_TO='202607'; // 已發生資料涵蓋範圍（載入後算）
+const isActualM=m=>m>=ACT_FROM&&m<=ACT_TO;
+const actRows=(pid,m)=>DB.allocations.filter(a=>a.layer==='actual'&&a.person_id===pid&&a.month===m);
+const actCost=(pid,m)=>{const r=STAFF['ACTUAL|'+pid+'|'+m];return r?+r.cost||0:0};
+const actExpInt=m=>EXP.filter(e=>e.scenario_id==='ACTUAL'&&e.month===m&&e.payer==='internal').reduce((s,e)=>s+(+e.amount_twd||0),0);
+const actIntSal=m=>DB.allocations.filter(a=>a.layer==='actual'&&a.month===m&&a.project_id==='internal').reduce((s,a)=>s+(+a.amount_twd||0),0);
+const actMonthTotal=m=>actIntSal(m)+actExpInt(m);
 const PLANB=()=>M.filter(m=>m>='202608'&&m<='202701'); // 新計劃 視窗（Aug–1月）
 window.jumpYear=y=>{const el=document.getElementById('mcol_'+y);if(el)el.scrollIntoView({behavior:'auto',inline:'start',block:'nearest'})};
 const thead=()=>M.map(m=>`<th ${(m===M[0]||m.slice(4)==='01')?`id="mcol_${m.slice(0,4)}"`:''} ${m>FARM?'style="color:var(--ink3)"':''}>${ML[m]}</th>`).join('');
@@ -908,6 +920,8 @@ async function loadAll(){
   DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals,staffing:staffRows};
   pmap=Object.fromEntries(people.map(p=>[p.id,p]));
   prmap=Object.fromEntries(projects.map(p=>[p.id,p]));
+  {const am=DB.allocations.filter(a=>a.layer==='actual').map(a=>a.month).concat((EXP||[]).filter(e=>e.scenario_id==='ACTUAL').map(e=>e.month)).sort();
+   if(am.length){ACT_FROM=am[0];ACT_TO=am[am.length-1]}else{ACT_FROM='202608';ACT_TO='202607'}}
   buildTimeline();
   const fr=settings.fx_rates;
   if(fr){RATES.USD=+fr.usd||RATES.USD;RATES.EUR=+fr.eur||RATES.EUR;RATES.asof=fr.asof||''}
@@ -966,9 +980,12 @@ function rwLabel(r){if(!r)return '—';
 // B20b：無基準時的預設模式——累計存金投入（H1 交換後基數＋逐月累加實列月合計）
 function cumOf(scnId){
   const ser=internalSeries(scnId);
-  const h1=+((DB.settings.headline||{}).h1_internal_after_swap)||0;
-  let bal=h1;const pts=[{m:'H1',bal,burn:0}];let steep={m:null,burn:0};
-  M.forEach(m=>{const b=ser[m]||0;bal+=b;pts.push({m,bal,burn:b});if(b>steep.burn)steep={m,burn:b}});
+  let bal=0;const pts=[];let steep={m:null,burn:0};
+  const hasAct=ACT_TO>=ACT_FROM;
+  if(!hasAct){const h1=+((DB.settings.headline||{}).h1_internal_after_swap)||0;bal=h1;pts.push({m:'H1',bal,burn:0})}
+  M.forEach(m=>{const b=isActualM(m)?actMonthTotal(m):(ser[m]||0);bal+=b;
+    pts.push({m,bal,burn:b,act:isActualM(m)});if(b>steep.burn)steep={m,burn:b}});
+  const h1=hasAct?(pts.filter(p=>p.act).slice(-1)[0]||{bal:0}).bal:(+((DB.settings.headline||{}).h1_internal_after_swap)||0);
   const at=mm=>{const p=pts.filter(x=>x.m!=='H1'&&x.m<=mm);return p.length?p[p.length-1].bal:h1};
   return{h1,pts,steep,to2026:at('202612'),to2701:at('202701'),toEnd:bal,endM:M[M.length-1]}}
 function cumSVG(c,w,h,big,c2,names){ // c2＝疊圖第二條（比較頁用）
@@ -986,6 +1003,10 @@ function cumSVG(c,w,h,big,c2,names){ // c2＝疊圖第二條（比較頁用）
     const step=Math.max(1,Math.ceil(c.pts.length/9));
     c.pts.forEach((p,i)=>{if(i===0||i%step===0||i===c.pts.length-1)
       s+=`<text x="${X(i)}" y="${h-6}" text-anchor="middle" font-size="10" fill="var(--ink3)">${p.m==='H1'?'H1':(ML[p.m]||p.m)}</text>`});
+    {const bi=c.pts.findIndex(p=>!p.act&&p.m!=='H1');
+     if(bi>0){s+=`<line x1="${X(bi-0.5<0?0:bi-0.5)}" x2="${X(bi-0.5<0?0:bi-0.5)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--ink3)" stroke-dasharray="3 3"/>
+       <text x="${X(bi)-6}" y="${pad.t+11}" text-anchor="end" font-size="10.5" fill="var(--ink2)">← 已發生</text>
+       <text x="${X(bi)+6}" y="${pad.t+11}" font-size="10.5" fill="var(--ink2)">計劃 →</text>`}}
     if(c.steep.m){const i=c.pts.findIndex(p=>p.m===c.steep.m);
       s+=`<circle cx="${X(i)}" cy="${Y(c.pts[i].bal)}" r="4" fill="var(--warn)"/>
           <text x="${X(i)}" y="${Y(c.pts[i].bal)-8}" text-anchor="middle" font-size="10.5" fill="var(--warn)">最陡 ${ML[c.steep.m]||c.steep.m} ＋${k(c.steep.burn)}${c.steep.m==='202612'?'（年終攤提）':''}</text>`}}
@@ -1036,7 +1057,7 @@ window.openRunway=()=>{
     :(()=>{const c=cumOf(ACTIVE);
       return `<p class="note" style="margin:0 0 6px">版本：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜<b>累計存金投入</b>＝H1（交換後）${k(c.h1)} ＋ 8月起逐月累加「月合計（算出來的數，實列）」｜至 2027/1 <b>≈${wan(c.to2701)}</b>｜至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}</p>
       ${cumSVG(c,760,280,true)}
-      <p class="note">線往上＝我們自己掏的錢越積越多。最陡的那一段就是單月花最多的月份（12 月是年終獎金分攤）。<b>7 月的帳還沒結，不在這條線裡。</b>還沒確定要聘的人不算進去。哪天你在這裡登記了目前的存金餘額，這張圖會自動變成「還能撐幾個月」的版本。</p>`})();
+      <p class="note">灰色虛線左邊是<b>已經發生</b>的實際數字，右邊是計劃。線往上＝我們自己掏的錢越積越多。最陡的那一段就是單月花最多的月份（12 月是年終獎金分攤）。<b>7 月的帳還沒結，不在這條線裡。</b>還沒確定要聘的人不算進去。哪天你在這裡登記了目前的存金餘額，這張圖會自動變成「還能撐幾個月」的版本。</p>`})();
   dlg.showModal()};
 window.frmMark=()=>{document.getElementById('rwDlg').close();
   openForm('更新存金基準（新增一筆，歷史全留）',[
@@ -1080,7 +1101,7 @@ const BOARD_MAP=[['benefits','福利費用（勞健退＋年終攤提）'],['租
   ['差旅','差旅費'],['Travel','差旅費'],['合約','合約/顧問服務費'],['Contractual','合約/顧問服務費'],
   ['專案費用','專案(活動)費用'],['Proje','專案(活動)費用']];
 const boardCat=c=>{for(const[t,g]of BOARD_MAP)if((c||'').includes(t))return g;return '其他費用'};
-const PAGE_INTRO={master:'這裡看全部同事每個月做哪些案子、各佔多少工作比例。切到「資金視圖」可以看每個月我們自己要掏多少錢。',
+const PAGE_INTRO={master:'這裡看全部同事每個月做哪些案子、各佔多少工作比例。切到「資金視圖」可以看每個月我們自己要掏多少錢。灰底的月份是<b>已經發生</b>的實際分帳（不能修改），往左捲可以看更早。',
  person:'這裡看一個人的完整安排：每個月做哪些案子、工時上限、薪水、當月工作重點。',
  projects:'這裡看所有案子的總覽：期間、還剩多少錢、用掉多少、幾個人在做。',
  project:'這裡看一個案子：預算線、誰在做、每個月要花的業務費、當月重點。',
@@ -1101,6 +1122,8 @@ const ST_LABEL={draft:'還沒送',sent:'已送出',pending_po:'等 NED 回覆',e
  open:'還沒完成',closed:'已完成',pending:'等處理',applied:'已接受',rejected:'不接受',needs_review:'要重看',
  active:'進行中',pipeline:'還在談',closing:'收尾中'};
 const stLabel=v=>ST_LABEL[v]||v;
+function coverNote(){const f=m=>(+m.slice(0,4))+'/'+(+m.slice(4));
+  return ACT_TO>=ACT_FROM?`｜已發生資料：${f(ACT_FROM)}–${f(ACT_TO)}；2025 年度資料未匯入`:'｜尚無已發生資料'}
 function pageIntro(page){const t=PAGE_INTRO[page];return t?`<p class="banner" style="border-left:3px solid var(--fN)">${t}</p>`:''}
 function vMaster(){
   let provAmt=0,provWt=0;
@@ -1126,7 +1149,7 @@ function vMaster(){
      const rwCard=rw
        ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l"><svg class="icon"><use href="#i-bolt"/></svg> Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
        :(()=>{const c=cumOf(ACTIVE);
-         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 累計存金投入（H1 交換後＋計劃）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b></div>${cumSVG(c,210,34,false)}</div>`})();
+         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 我們自己出的錢（累計）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b>${coverNote()}</div>${cumSVG(c,210,34,false)}</div>`})();
      return c1+rwCard+`<div class="card prov"><div class="l">還沒確定的金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」算法，另計不混算${provWt&&!MASK?'｜打折後的估計 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l"><svg class="icon"><use href="#i-cal"/></svg> 待辦死線</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
@@ -1143,6 +1166,16 @@ function vMaster(){
     if(p.id==='tara')return;
     h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">未定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
     M.forEach(m=>{
+      if(isActualM(m)){ // B23：已發生月份＝實際分帳，唯讀
+        const ar=actRows(p.id,m);const cost=actCost(p.id,m);
+        if(!ar.length&&!cost){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+        const intAmt=ar.filter(a=>a.project_id==='internal').reduce((x,a)=>x+(+a.amount_twd||0),0);
+        const tip='已發生（實際分帳）&#10;'+ar.map(a=>(SHORT[a.project_id]||(prmap[a.project_id]||{}).name||a.project_id)+' '+k(a.amount_twd)).join('&#10;');
+        const txt=fund?(intAmt>500?k(intAmt):'0'):(cost?k(cost):'—');
+        const cls=fund?(intAmt<=500?'fG':intAmt>=cost-500?'fR':'fY'):'';
+        h+=`<td><span class="cell num uAct ${cls}" title="${tip}" onclick="event.stopPropagation();toast('這是已經發生的紀錄，不能修改')">${txt}</span></td>`;
+        if(fund)intMonth[m]+=intAmt;
+        return}
       if(fund){
         const f=fundOf(p.id,m);
         if(!f.active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
@@ -1175,7 +1208,7 @@ function vMaster(){
     h+=`<tr class="introw"><td><b>薪資·存金投入（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>provMonth[m]>500))
       h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">還沒確定要聘的人·存金投入（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
-    const eB={},eN={};M.forEach(m=>{const e=expInt(ACTIVE,m);eB[m]=e.ben;eN[m]=e.np});
+    const eB={},eN={};M.forEach(m=>{if(isActualM(m)){eB[m]=0;eN[m]=actExpInt(m);return}const e=expInt(ACTIVE,m);eB[m]=e.ben;eN[m]=e.np});
     const estAny=EXP.some(e=>e.scenario_id===ACTIVE&&e.category==='benefits'&&(e.item||'').includes('（含估）'));
     if(M.some(m=>eB[m]>500))
       h+=`<tr class="introw"><td><b style="font-weight:600">福利·存金投入（自動算出來的）${estAny?'<span style="color:var(--warn)" title="部分人月無模型基準，採有效費率估算">估</span>':''}</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
@@ -1241,6 +1274,11 @@ function vPerson(pid){
     const proj=prmap[pr];
     h+=`<tr><td class="${isAdmin()?'click':''}" ${isAdmin()?`onclick="location.hash='#project/${pr}'"`:''}><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">未定</span>':''}</td>`;
     M.forEach(m=>{
+      if(isActualM(m)){ // B23：已發生月份顯示實際金額，唯讀
+        const ac=DB.allocations.find(x=>x.layer==='actual'&&x.person_id===pid&&x.month===m&&x.project_id===pr);
+        if(!ac){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+        h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${k(ac.amount_twd)}</span></td>`;
+        return}
       const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const pd=pending[[pid,m,pr].join('|')];
       if(!a&&!pd){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
@@ -1275,7 +1313,7 @@ function vPerson(pid){
   }
   h+=`<tr><td><b>📝 當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
   M.forEach(m=>{h+=noteCell('person',pid,m)});
-  h+='</tr></tbody></table></div><p class="note">點任何一格可以提出修改建議（送出後會先變成待處理，不會直接改到正式資料）'+(isAdmin()?'；「工時上限」那一列點格子可以從某個月起調整；到職／離職日用上面的按鈕設定，當月薪水系統會自動按天數比例算，而且每一次改動都留下紀錄':'')+'。</p>'+farNote();
+  h+='</tr></tbody></table></div>'+(ACT_TO>=ACT_FROM?`<p class="note">灰底月份＝已經發生的實際分帳（${(+ACT_FROM.slice(0,4))}/${+ACT_FROM.slice(4)}–${(+ACT_TO.slice(0,4))}/${+ACT_TO.slice(4)}），不能修改；2025 年度資料未匯入。</p>`:'')+'<p class="note">點任何一格可以提出修改建議（送出後會先變成待處理，不會直接改到正式資料）'+(isAdmin()?'；「工時上限」那一列點格子可以從某個月起調整；到職／離職日用上面的按鈕設定，當月薪水系統會自動按天數比例算，而且每一次改動都留下紀錄':'')+'。</p>'+farNote();
   h+=notesDigest('person',pid,'本人逐月');
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
@@ -1939,6 +1977,7 @@ document.getElementById('maskBtn').onclick=()=>{
 if(MASK)document.getElementById('maskBtn').textContent='🙈 金額';
 window.showCheat=()=>document.getElementById('cheatDlg').showModal();
 function maybeCheat(){if(!localStorage.getItem('cr_cheat'))setTimeout(()=>{try{document.getElementById('cheatDlg').showModal()}catch(e){}},600)}
+window.toast=msg=>{const st=document.getElementById('status');if(!st)return;const old=st.textContent;st.textContent=msg;setTimeout(()=>{st.textContent=old},2600)};
 window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);const el=document.getElementById('theme');if(el&&el.value!==v)el.value=v;
   document.documentElement.dataset.theme=(v==='base-auto')?(matchMedia('(prefers-color-scheme: dark)').matches?'base-dark':'base-light'):v};
 document.getElementById('theme').value=window.__themePref||'base-auto';
