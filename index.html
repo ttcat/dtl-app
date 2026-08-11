@@ -30,7 +30,7 @@
 --fN:#3b82f6;--fDI:#d97706;--fSE:#ec4899;--fH:#8b5cf6;--fO:#0d9488;--fP:#64748b;
 --good:#4ade80;--warn:#fbbf24;--crit:#f87171;--focus:#3b82f6;
 --btn:#1F2127;--btn-ink:#E8E9ED;--btn-h:#2E3138;--r:8px;--rb:6px;--kv:20px}
-/* Base 結構規則（classic 不套用） */
+/* Base 結構規則（classic 不接受） */
 :root[data-theme^=base] th{text-transform:uppercase;letter-spacing:.04em;border-bottom-width:2px;border-bottom-color:var(--line2)}
 :root[data-theme^=base] .card{box-shadow:none}
 :root[data-theme^=base] .rule-strong{border-color:var(--line2)}
@@ -153,11 +153,11 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
   <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
   <span id="status" class="note" style="margin:0"></span>
   <nav id="nav">
-    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">專案</a><a href="#lines">職務</a><a href="#scenarios">提案</a><a href="#amend">修約與閘門</a>
+    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">案子</a><a href="#lines">職位</a><a href="#scenarios">版本</a><a href="#amend">待辦與死線</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
-    <select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select>
-    <select class="hbtn" id="scnSel" title="情境：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
-    <button class="hbtn" id="scnNew" title="開新情境（複製正式版成你的沙盒）" style="display:none" onclick="frmScn()">＋情境</button>
+    <button class="hbtn" onclick="showCheat()" title="三分鐘看懂這個系統">說明</button><select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select>
+    <select class="hbtn" id="scnSel" title="版本：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
+    <button class="hbtn" id="scnNew" title="開新版本（複製正式版成你的沙盒）" style="display:none" onclick="frmScn()">＋開新版本</button>
     <select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select>
     <button class="hbtn" id="maskBtn" title="隱藏/顯示金額（分享螢幕用）" style="display:none">👁 金額</button>
     <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
@@ -180,22 +180,22 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
 <main id="app" style="display:none"><p class="banner"><span class="spin"></span> 從資料庫載入中…</p></main>
 
 <dialog id="editDlg">
-  <h3 id="edTitle">提案修改</h3>
+  <h3 id="edTitle">修改建議修改</h3>
   <div class="row"><span>新 LOE %</span><input type="number" id="edLoe" min="0" max="100" step="5" style="width:90px"></div>
   <div class="row"><span>換算金額</span><b class="num" id="edAmt">—</b></div>
-  <div class="row"><span>提案人</span><input type="text" id="edAuthor" placeholder="你的名字" style="width:150px"></div>
+  <div class="row"><span>建議人</span><input type="text" id="edAuthor" placeholder="你的名字" style="width:150px"></div>
   <div class="row"><span>備註</span><input type="text" id="edNote" placeholder="選填" style="width:150px"></div>
-  <p class="note" style="margin:6px 0 0">送出後為「待套用」提案（虛線標示），由財務/CEO 核可後寫入正式資料。</p>
+  <p class="note" style="margin:6px 0 0">送出後為「待接受」修改建議（還沒確定標示），由財務/CEO 核可後寫入正式資料。</p>
   <div id="edErr"></div>
-  <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出提案</button></div>
+  <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出修改建議</button></div>
 </dialog>
 
 <dialog id="sealDlg">
-  <h3><svg class="icon"><use href="#i-lock"/></svg> 觸及已送財報期間</h3>
+  <h3><svg class="icon"><use href="#i-lock"/></svg> 這會改到已經送出去的財報</h3>
   <div id="sealMsg" style="color:var(--crit);font-size:13px;line-height:1.6;margin-bottom:10px"></div>
   <div class="row"><span>修改原因*</span><input type="text" id="sealReason" style="width:180px" placeholder="必填"></div>
   <div class="row"><span>輸入 YES 放行</span><input type="text" id="sealYes" style="width:180px" placeholder="YES"></div>
-  <p class="note" style="margin:6px 0 0">放行後會在稽核紀錄留下：誰、何時、哪些格、原因。</p>
+  <p class="note" style="margin:6px 0 0">按下去之後，系統會記下是誰、什麼時候、改了哪幾格、為什麼改。</p>
   <div class="acts"><button class="btn" id="sealCancel">取消</button><button class="btn primary" id="sealGo">放行修改</button></div>
 </dialog>
 
@@ -206,6 +206,24 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
   <div class="acts"><button class="btn" id="fdCancel">取消</button><button class="btn primary" id="fdSave">儲存</button></div>
 </dialog>
 
+<dialog id="cheatDlg" style="max-width:560px">
+  <h3>三分鐘看懂這個系統</h3>
+  <div style="font-size:13.5px;line-height:1.75">
+    <p style="margin:6px 0"><b>一、這是什麼</b><br>
+    這裡放的是「<b>誰、哪個月、做哪個案子、佔多少工作比例</b>」，以及「<b>薪水和開銷由哪個補助款支付、哪些要我們自己出</b>」。
+    數字都是即時的——有人改了，你重新整理就看到新的。</p>
+    <p style="margin:6px 0"><b>二、你可以做什麼</b><br>
+    看自己每個月的安排和當月工作重點；覺得不對，<b>點那一格提出修改建議</b>（送出後由 CEO／財務決定接不接受，不會直接改到正式資料）。</p>
+    <p style="margin:6px 0"><b>三、看不懂的字</b><br>
+    <b>工作比例（LOE）</b>＝你那個月有多少比例的時間在這個案子上，全部加起來不超過你的工時上限。<br>
+    <b>虛線框</b>＝這個安排還沒確定（案子還沒簽約／人還沒聘／還沒核准）。<br>
+    <b>存金</b>＝我們自己的錢（不是補助款）。<br>
+    <b>版本</b>＝一整套算法；大家可以各開一個版本試算，最後由 CEO 選一個當正式版。<br>
+    <b>—</b>＝那個月不在編（還沒到職或已離職）。</p>
+    <p class="note" style="margin:8px 0 0">畫面上有虛線底線的詞，滑鼠移上去會有解釋。</p>
+  </div>
+  <div class="acts"><button class="btn primary" onclick="document.getElementById('cheatDlg').close();localStorage.setItem('cr_cheat','1')">知道了</button></div>
+</dialog>
 <dialog id="rwDlg" style="max-width:820px;width:calc(100vw - 60px)">
   <h3><svg class="icon"><use href="#i-bolt"/></svg> 存金水位（Runway）</h3>
   <div class="rwBody"></div>
@@ -234,12 +252,12 @@ function buildTimeline(){
   ML={};M.forEach(x=>ML[x]=((x.slice(4)==='01'||x===M[0])?(+x.slice(0,4))+'年':'')+(+x.slice(4))+'月');
   FARM=mAdd(nowMonth(),12); // 超過未來 12 個月 ＝ 遠期規劃假設
 }
-const PLANB=()=>M.filter(m=>m>='202608'&&m<='202701'); // Plan B 視窗（Aug–1月）
+const PLANB=()=>M.filter(m=>m>='202608'&&m<='202701'); // 新計劃 視窗（Aug–1月）
 window.jumpYear=y=>{const el=document.getElementById('mcol_'+y);if(el)el.scrollIntoView({behavior:'auto',inline:'start',block:'nearest'})};
 const thead=()=>M.map(m=>`<th ${(m===M[0]||m.slice(4)==='01')?`id="mcol_${m.slice(0,4)}"`:''} ${m>FARM?'style="color:var(--ink3)"':''}>${ML[m]}</th>`).join('');
 const yearJump=()=>{const ys=[...new Set(M.map(m=>m.slice(0,4)))];
   return ys.length>1?`<div style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><span class="note" style="margin:0">跳至：</span>${ys.map(y=>`<button class="hbtn num" onclick="jumpYear('${y}')">${y}</button>`).join('')}</div>`:''};
-const farNote=()=>M[M.length-1]>FARM?`<p class="note">⚠ 遠期提醒：${(+FARM.slice(0,4))}年${+FARM.slice(4)}月之後（超過未來 12 個月）為<b>規劃假設</b>，格子以虛線顯示；pipeline 專案另計信心度加權，非承諾數字。</p>`:'';
+const farNote=()=>M[M.length-1]>FARM?`<p class="note">${(+FARM.slice(0,4))}年${+FARM.slice(4)}月之後的安排都還只是<b>初步規劃</b>（超過一年以後的事），格子用虛線框表示；還在談的案子會另外用「打折後的估計」算，不是承諾一定會有的錢。</p>`:'';
 const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'存金'};
 const PC={ned:'--fN',di:'--fDI',se:'--fSE',hrf:'--fH',otf:'--fO',ned2027:'--fP',pipeA:'--fP',pipeB:'--fP',internal:'--crit'};
 let ROLE=null;
@@ -262,7 +280,7 @@ window.setCur=v=>{CUR=v;localStorage.setItem('cr_cur',v);route()};
 let DB=null,pmap={},prmap={},W=[],pending={};
 let VIEW=localStorage.getItem('cr_view')||'load';
 window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
-// ---- B6: 情境系統 ----
+// ---- B6: 版本系統 ----
 let OFFICIAL='V8.1',ACTIVE='V8.1',SCNS=[],ROLEMAP={},SNOTES={};
 const myDrafts=()=>SCNS.filter(s=>s.status==='draft'&&ROLE&&s.owner===ROLE.email);
 const isAiOwner=email=>ROLEMAP[email]==='ai';
@@ -271,7 +289,7 @@ const canEditScn=()=>ACTIVE!==OFFICIAL&&myDrafts().some(s=>s.id===ACTIVE); // AI
 window.setScn=id=>{ACTIVE=id;localStorage.setItem('cr_scn',id);W=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);rebuildPending();applyScnSel();route()};
 function rebuildPending(){
   pending={};
-  if(ACTIVE!==OFFICIAL)return; // 提案只對正式版（負一#4）
+  if(ACTIVE!==OFFICIAL)return; // 修改建議只對正式版（負一#4）
   DB.proposals.filter(x=>x.status==='pending'&&x.target_table==='allocations').forEach(x=>{
     const t=x.target_pk||{};pending[[t.person_id,t.month,t.project_id].join('|')]=x;});
 }
@@ -289,13 +307,13 @@ const draftBanner=()=>{
   if(!isAdmin()||ACTIVE===OFFICIAL)return '';
   const scn=SCNS.find(s=>s.id===ACTIVE)||{};
   const ai=isAiOwner(scn.owner);
-  return `<p class="banner" style="border-color:var(--fP)">${ai?'🤖 AI 提案情境':'🧪 草稿情境'}「<b>${scn.name||ACTIVE}</b>」——${ai?'AI 產生的提案（人類唯讀）：看比較、決定定案或封存。':'只有你看得到；點格＝直接改草稿（不走提案）。'}
+  return `<p class="banner" style="border-color:var(--fP)">${ai?'🤖 AI 修改建議版本':'🧪 草稿版本'}「<b>${scn.name||ACTIVE}</b>」——${ai?'AI 產生的修改建議（人類唯讀）：看比較、決定採用或封存。':'只有你看得到；點格＝直接改草稿（不走修改建議）。'}
     <a href="#compare">與正式版比較</a>
-    <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
+    <button class="miniact ok" onclick="finalizeScn()">採用這個版本</button>
     <button class="miniact" onclick="archiveScn()">封存草稿</button>
     <button class="miniact" onclick="recalcNow()" title="AI/REST 寫入不會自動重算福利——一鍵補算">↻ 重算福利</button></p>`;
 };
-// ---- B15: 財報封印 ----
+// ---- B15: 已送財報·鎖定 ----
 let SEALS=[];
 function sealOf(pr,m){return SEALS.find(s=>s.project_id===pr&&s.period_start<=m&&m<=s.period_end)||null}
 const sealMark=(pr,m)=>{const s=sealOf(pr,m);return s?'<svg class="icon sm"><use href="#i-lock"/></svg>':''};
@@ -319,8 +337,8 @@ function sealConfirm(hits,ctx){ // hits=[{pr,m,seal}]；回傳 Promise<{go,reaso
     dlg.showModal();
   });
 }
-async function sealGate(pairs,what){ // official 寫入前：檢查 (案,月) 是否觸及封印；擋→YES＋原因→audit
-  if(ACTIVE!==OFFICIAL)return true; // 草稿沙盒不攔（定案時另計）
+async function sealGate(pairs,what){ // official 寫入前：檢查 (案,月) 是否觸及鎖定；擋→YES＋原因→audit
+  if(ACTIVE!==OFFICIAL)return true; // 草稿沙盒不攔（採用時另計）
   const seen=new Set(),hits=[];
   pairs.forEach(p=>{const key=p.pr+'|'+p.m;if(seen.has(key))return;seen.add(key);
     const s=sealOf(p.pr,p.m);if(s)hits.push({pr:p.pr,m:p.m,seal:s})});
@@ -331,7 +349,7 @@ async function sealGate(pairs,what){ // official 寫入前：檢查 (案,月) �
     action:'seal_override',before:null,after:{what,reason:r.reason,cells:hits.length}})}catch(e){}
   return true;
 }
-// ---- B18-1: 福利即時派生（parity 已過：重算 ≡ 模型逐元） ----
+// ---- B18-1: 福利自動算出來的（parity 已過：重算 ≡ 模型逐元） ----
 async function recalcBenefits(scnId){
   const bb=((DB.settings.benefit_base||{}).base)||{};
   const rate=DB.settings.benefit_rate||{};
@@ -374,20 +392,20 @@ async function recalcBenefits(scnId){
     const sp=k.split('|'),m=sp[0],pr=sp[1];
     const want=Math.round(tgt[k]||0);
     const have=curMap[k];
-    const item='福利派生（即時）'+(estFlag[k]?'（含估）':'');
+    const item='福利自動算出來的（即時）'+(estFlag[k]?'（含估）':'');
     if(have){
       const itemChanged=((have.item||'').includes('（含估）'))!==!!estFlag[k];
       if(Math.round(+have.amount_twd)!==want||itemChanged){
-        await dbUpd('expense_plan','id=eq.'+have.id,{amount_twd:want,item,note:'即時派生（B18-1）'});writes++;}
+        await dbUpd('expense_plan','id=eq.'+have.id,{amount_twd:want,item,note:'自動算出來的（B18-1）'});writes++;}
     }else if(want>0){
       await dbIns('expense_plan',{scenario_id:scnId,month:m,category:'benefits',item,
-        payer:pr==='internal'?'internal':'grant',amount_twd:want,note:'即時派生（B18-1）',
+        payer:pr==='internal'?'internal':'grant',amount_twd:want,note:'自動算出來的（B18-1）',
         project_id:pr,line_id:pr==='ned'?nedBen:null});writes++;}
   }
   return writes;
 }
 window.recalcNow=async()=>{const n=await recalcBenefits(ACTIVE);await reload('福利已重算（'+n+' 列更新）')};
-// ---- B14: 月度快照——official 三表寫入的共用攔截門 ----
+// ---- B14: 每月存檔——official 三表寫入的共用攔截門 ----
 const isSnap=s=>String(s.id||'').startsWith('snap_')||String(s.id||'').startsWith('msnap_');
 async function copyOfficialTo(id){
   const alloc=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL)
@@ -404,7 +422,7 @@ async function copyOfficialTo(id){
 }
 async function takeSnapshot(id,name,reason,ymMark){
   await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
-    status:'archived',owner:null,created_by:ROLE.email,name,note:'快照｜'+reason,
+    status:'archived',owner:null,created_by:ROLE.email,name,note:'存檔｜'+reason,
     headline:(SCNS.find(s=>s.id===OFFICIAL)||{}).headline||null});
   await copyOfficialTo(id);
   if(ymMark)await dbIns('settings?on_conflict=key',{key:'last_snapshot_month',value:{v:ymMark}},'');
@@ -413,32 +431,32 @@ async function ensureSnapshot(reason){ // 每個 official 三表寫入路徑進�
   if(!isAdmin()||ACTIVE!==OFFICIAL)return; // 草稿寫入不觸發
   const ym=new Date().toISOString().slice(0,7).replace('-','');
   const last=String(DB.settings.last_snapshot_month||'');
-  if(last>=ym)return; // 同月只快照一次
-  const st=document.getElementById('status');st.innerHTML='<span class="spin"></span> 本月首次修改，先留存快照…';
-  await takeSnapshot('snap_'+ym,`${+ym.slice(0,4)}年${+ym.slice(4)}月版（自動快照）`,'首筆修改前自動留存：'+reason,ym);
+  if(last>=ym)return; // 同月只存檔一次
+  const st=document.getElementById('status');st.innerHTML='<span class="spin"></span> 本月首次修改，先留存存檔…';
+  await takeSnapshot('snap_'+ym,`${+ym.slice(0,4)}年${+ym.slice(4)}月版（自動存檔）`,'首筆修改前自動留存：'+reason,ym);
   DB.settings.last_snapshot_month=ym;
 }
-window.manualSnapshot=()=>openForm('📸 立即快照（把現行正式版三表整份留存）',[
-  {id:'why',label:'留存原因',placeholder:'例：定案前存檔'},
+window.manualSnapshot=()=>openForm('📸 立即存檔（把現行正式版三表整份留存）',[
+  {id:'why',label:'留存原因',placeholder:'例：採用前存檔'},
 ],async v=>{
   const ts=new Date().toISOString().slice(0,16).replace('T',' ');
-  await takeSnapshot('msnap_'+Date.now().toString(36),'手動快照 '+ts,v.why||'手動快照',null);
-  await reload('快照已留存');
+  await takeSnapshot('msnap_'+Date.now().toString(36),'手動存檔 '+ts,v.why||'手動存檔',null);
+  await reload('存檔已留存');
 });
-window.frmScn=()=>openForm('開新情境（複製正式版）',[
-  {id:'name',label:'情境名稱*',placeholder:'例：加碼全過版'},
-  {id:'why',label:'說明(選填)',placeholder:'這個情境想驗證什麼'},
+window.frmScn=()=>openForm('開新版本（複製正式版）',[
+  {id:'name',label:'版本名稱*',placeholder:'例：加碼全過版'},
+  {id:'why',label:'說明(選填)',placeholder:'這個版本想驗證什麼'},
 ],async v=>{
   if(!v.name)throw new Error('名稱必填');
   if(myDrafts().length>=3)throw new Error('每人最多 3 個草稿——請先封存舊草稿');
   const id='d_'+slug(v.name)+'_'+Math.floor(Math.random()*9000+1000);
   await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
-    status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,note:'草稿（B6）'});
+    status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,note:'使用者開的版本'});
   await copyOfficialTo(id); // 三表統一複製（B14 共用，含 project_id/line_id）
   localStorage.setItem('cr_scn',id);
-  await reload('已開新情境「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
+  await reload('已開新版本「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
 });
-function scnSealedTouch(){ // 定案 diff 觸及的封印 (案,月)
+function scnSealedTouch(){ // 採用 diff 觸及的鎖定 (案,月)
   const out=new Set();
   const kf=a=>a.person_id+'|'+a.month+'|'+a.project_id;
   const om={},dm={};
@@ -456,14 +474,14 @@ function scnSealedTouch(){ // 定案 diff 觸及的封印 (案,月)
   return [...out];
 }
 window.finalizeScn=()=>{const sealed=scnSealedTouch();
- return openForm('定案為正式版？（舊版歸檔、全團隊改看新版）'+(sealed.length?`⚠ 觸及已送財報期間 ${sealed.length} 格（${sealed.slice(0,4).map(kk=>{const p3=kk.split('|');return (SHORT[p3[0]]||p3[0])+(ML[p3[1]]||p3[1])}).join('、')}${sealed.length>4?'…':''}）——與已送財報將不一致`:''),[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
+ return openForm('採用這個版本？（舊版歸檔、全團隊改看新版）'+(sealed.length?`⚠ 觸及已送財報期間 ${sealed.length} 格（${sealed.slice(0,4).map(kk=>{const p3=kk.split('|');return (SHORT[p3[0]]||p3[0])+(ML[p3[1]]||p3[1])}).join('、')}${sealed.length>4?'…':''}）——與已送財報將不一致`:''),[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
   if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
-  if(sealed.length)try{await dbIns('audit_log',{actor:ROLE.email,table_name:'official',row_pk:sealed.join(','),action:'seal_override',before:null,after:{what:'定案 '+ACTIVE,cells:sealed.length}})}catch(e){}
+  if(sealed.length)try{await dbIns('audit_log',{actor:ROLE.email,table_name:'official',row_pk:sealed.join(','),action:'seal_override',before:null,after:{what:'採用 '+ACTIVE,cells:sealed.length}})}catch(e){}
   await dbUpd('scenario_versions','id=eq.'+encodeURIComponent(OFFICIAL),{status:'archived'});
   await dbUpd('scenario_versions','id=eq.'+encodeURIComponent(ACTIVE),{status:'official',date:new Date().toISOString().slice(0,10)});
-  try{await dbUpd('edit_proposals','status=eq.pending',{status:'needs_review'})}catch(e){} // 未處理提案標「需重新檢視」
+  try{await dbUpd('edit_proposals','status=eq.pending',{status:'needs_review'})}catch(e){} // 未處理修改建議標「需重新檢視」
   localStorage.setItem('cr_scn',ACTIVE);
-  await reload('已定案——舊版已歸檔；未處理提案已標「需重新檢視」');
+  await reload('已採用——舊版已歸檔；未處理修改建議已標「需重新檢視」');
 })};
 window.archiveScn=()=>openForm('封存這個草稿？（資料保留、可回看不可再編）',[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
   if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
@@ -532,7 +550,7 @@ window.frmPerson=()=>openForm('新增同事',[
 
 window.frmProject=()=>openForm('新增專案',[
   {id:'name',label:'名稱*'},{id:'donor',label:'Donor'},
-  {id:'status',label:'狀態',type:'select',value:'pipeline',options:[['active','active'],['pipeline','pipeline(暫定)']]},
+  {id:'status',label:'狀態',type:'select',value:'pipeline',options:[['active','active'],['pipeline','pipeline(未定)']]},
   {id:'currency',label:'幣別',type:'select',value:'TWD',options:[['TWD','TWD'],['USD','USD'],['EUR','EUR']]},
   {id:'fx',label:'匯率(對TWD)',type:'number',value:31.5},
   {id:'total',label:'核准總額(原幣,可空)',type:'number'},
@@ -564,7 +582,7 @@ window.frmLine=pr=>openForm('新增職位線（'+((prmap[pr]||{}).name||pr)+'）
 window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].name),[
   {id:'from',label:'自哪個月起',type:'select',value:m,options:M.map(x=>[x,ML[x]])},
   {id:'cap',label:'新容量%',type:'number',value:capOf(pid,m)},
-  {id:'only',label:'僅套用此月',type:'checkbox'},
+  {id:'only',label:'僅接受此月',type:'checkbox'},
 ],async v=>{
   const c=+v.cap;if(!(c>=0&&c<=100))throw new Error('容量 0–100');
   const rows=M.filter(x=>v.only?x===v.from:(x>=v.from&&costOf(pid,x)>0)).filter(x=>costOf(pid,x)>0).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:costOf(pid,x),capacity:c}));
@@ -581,7 +599,7 @@ window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].na
 window.frmSalary=(pid,m)=>openForm('調薪：'+(pmap[pid].alias||pmap[pid].name),[
   {id:'from',label:'自哪個月起',type:'select',value:m,options:M.map(x=>[x,ML[x]])},
   {id:'cost',label:'新月成本',type:'number',value:costOf(pid,m)},
-  {id:'only',label:'僅套用此月（夾月/混合值）',type:'checkbox'},
+  {id:'only',label:'僅接受此月（夾月/混合值）',type:'checkbox'},
 ],async v=>{
   const c=+v.cost;if(!(c>=0))throw new Error('月成本需 ≥ 0');
   const rows=M.filter(x=>(v.only?x===v.from:x>=v.from)&&costOf(pid,x)>0) // 只調在編月份——調薪不是延長聘期（聘期用到職/離職設）
@@ -626,8 +644,8 @@ window.applyProposal=async id=>{
   const l=+((x.payload||{}).loe_pct??0);
   const sal=costOf(t.person_id,t.month);const cap=capOf(t.person_id,t.month)||100;
   const amount=(x.payload&&x.payload.amount_twd!=null)?+x.payload.amount_twd:Math.round(sal/cap*l);
-  await ensureSnapshot('套用提案 #'+id);
-  if(!await sealGate([{pr:t.project_id,m:t.month}],'套用提案 #'+id))return;
+  await ensureSnapshot('接受修改建議 #'+id);
+  if(!await sealGate([{pr:t.project_id,m:t.month}],'接受修改建議 #'+id))return;
   const offW=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL);
   const exist=offW.find(a=>a.person_id===t.person_id&&a.month===t.month&&a.project_id===t.project_id);
   const extraNed=(x.payload&&x.payload.ned_line)?{ned_line:x.payload.ned_line}:{};
@@ -638,18 +656,18 @@ window.applyProposal=async id=>{
     loe_pct:l,amount_twd:amount,layer:'working',scenario_id:OFFICIAL,provisional:(prmap[t.project_id]||{}).provisional||false,...extraNed});
   await dbUpd('edit_proposals','id=eq.'+id,{status:'applied'});
   try{await recalcBenefits(ACTIVE)}catch(e){}
-  await reload('已套用提案 #'+id);
+  await reload('已接受修改建議 #'+id);
 };
-window.rejectProposal=id=>openForm('退回提案 #'+id,[{id:'note',label:'退回理由'}],async v=>{
+window.rejectProposal=id=>openForm('退回修改建議 #'+id,[{id:'note',label:'退回理由'}],async v=>{
   await dbUpd('edit_proposals','id=eq.'+id,{status:'rejected',note:v.note||'退回'});
-  await reload('已退回提案 #'+id);
+  await reload('已退回修改建議 #'+id);
 });
 
-// ---- B10: 情境化用人表（staffing）——薪資/容量一律由 ACTIVE 情境讀 ----
+// ---- B10: 版本化用人表（staffing）——薪資/容量一律由 ACTIVE 版本讀 ----
 let STAFF={},CTXSCN=null,EXP=[],AUD=[],RESM=[],RCPT=[];
 let AUDF={t:'',a:''};
-window.setAudF=(k,v)=>{AUDF[k]=v;route()}; // CTXSCN：scnMetrics 臨時切換情境用
-function expInt(scnId,m){ // B11: 該情境該月的 internal 福利/非人事（派生＋支出計劃）
+window.setAudF=(k,v)=>{AUDF[k]=v;route()}; // CTXSCN：scnMetrics 臨時切換版本用
+function expInt(scnId,m){ // B11: 該版本該月的 internal 福利/非人事（自動算出來的＋支出計劃）
   let ben=0,np=0;
   EXP.forEach(e=>{if(e.scenario_id!==scnId||e.payer!=='internal'||e.month!==m)return;
     if(e.category==='benefits')ben+=+e.amount_twd;else np+=+e.amount_twd});
@@ -671,7 +689,7 @@ function zeroNote(pid,m){ // '—' 格的事件註記
     if(e.type!=='departure'&&m<em)return w+e.date+' 到職';}
   return '';
 }
-// ---- B7: 逐月備注（工作重點；正式資料，不分情境） ----
+// ---- B7: 逐月備注（工作重點；正式資料，不分版本） ----
 let NOTES={};
 const noteOf=(scope,id,m)=>NOTES[scope+'|'+id+'|'+m]||'';
 window.frmNote=(scope,id,m)=>{
@@ -923,7 +941,7 @@ function lossRange(){
 function toTWD(v,cur){v=+v||0;if(cur==='USD')return v*RATES.USD;if(cur==='EUR')return v*RATES.EUR;return v}
 function latestMark(){if(!RESM.length)return null;
   return RESM.slice().sort((a,b)=>a.as_of<b.as_of?1:a.as_of>b.as_of?-1:b.id-a.id)[0]}
-function internalSeries(scnId){ // 每月「月合計（帳面，實列）」＝薪資實＋福利＋非人事；暫定另計不入（假想人力不折壽命）
+function internalSeries(scnId){ // 每月「月合計（算出來的數，實列）」＝薪資實＋福利＋非人事；未定另計不入（假想人力不折壽命）
   const arr=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===scnId);
   const sv=W,sc=CTXSCN;W=arr;CTXSCN=scnId;
   const out={};
@@ -1010,15 +1028,15 @@ window.openRunway=()=>{
   const r=runwayOf(ACTIVE);const dlg=document.getElementById('rwDlg');
   const hist=RESM.slice(0,6).map(m=>`<tr><td>${m.as_of}</td><td class="num">${k(+m.amount_twd)}</td><td>${esc(m.note||'')}</td><td style="color:var(--ink3)">${esc(m.set_by||'')}</td></tr>`).join('');
   dlg.querySelector('.rwBody').innerHTML=r
-    ?`<p class="note" style="margin:0 0 6px">基準：<b>${r.mk.as_of}</b> 存金 <b>${k(+r.mk.amount_twd)}</b>${r.mk.note?'（'+esc(r.mk.note)+'）':''}｜情境：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜Runway <b>${rwLabel(r)}</b>｜最低點 ${ML[r.low.m]||r.low.m} ${k(r.low.bal)}</p>
+    ?`<p class="note" style="margin:0 0 6px">基準：<b>${r.mk.as_of}</b> 存金 <b>${k(+r.mk.amount_twd)}</b>${r.mk.note?'（'+esc(r.mk.note)+'）':''}｜版本：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜Runway <b>${rwLabel(r)}</b>｜最低點 ${ML[r.low.m]||r.low.m} ${k(r.low.bal)}</p>
       ${rwSVG(r,760,280,true)}
-      <p class="note">水位＝基準逐月減「月合計（帳面，實列）」；暫定人力另計不入線。▼＝收款標記（綠＝已到帳、黃＝預計）——grant 款限定用途不加入存金，只影響墊款。基準日當月視為已反映，次月起扣。</p>
+      <p class="note">這條線＝從你登記的存金餘額開始，每個月扣掉「這個月我們自己要出的錢」。還沒確定要聘的人不算進去（免得把想像中的人當成真的在花錢）。▼是收款：綠色＝錢已經進來、黃色＝預計進來——<b>補助款只能用在指定用途，不會變成可自由運用的存金</b>，只影響我們先墊多少。</p>
       <h3 style="margin:10px 0 4px">基準歷史（append-only）</h3>
       <div class="tblwrap"><table><thead><tr><th>基準日</th><th>存金</th><th>備註</th><th>登記者</th></tr></thead><tbody>${hist}</tbody></table></div>`
     :(()=>{const c=cumOf(ACTIVE);
-      return `<p class="note" style="margin:0 0 6px">情境：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜<b>累計存金投入</b>＝H1（交換後）${k(c.h1)} ＋ 8月起逐月累加「月合計（帳面，實列）」｜至 2027/1 <b>≈${wan(c.to2701)}</b>｜至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}</p>
+      return `<p class="note" style="margin:0 0 6px">版本：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜<b>累計存金投入</b>＝H1（交換後）${k(c.h1)} ＋ 8月起逐月累加「月合計（算出來的數，實列）」｜至 2027/1 <b>≈${wan(c.to2701)}</b>｜至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}</p>
       ${cumSVG(c,760,280,true)}
-      <p class="note">曲線上升＝虧損累積；最陡段＝單月投入最高（12月＝年終攤提）。<b>7月未結帳未含</b>。暫定人力另計不入線。設定存金基準後本卡自動切換為「水位模式」（顯示見底月）。</p>`})();
+      <p class="note">線往上＝我們自己掏的錢越積越多。最陡的那一段就是單月花最多的月份（12 月是年終獎金分攤）。<b>7 月的帳還沒結，不在這條線裡。</b>還沒確定要聘的人不算進去。哪天你在這裡登記了目前的存金餘額，這張圖會自動變成「還能撐幾個月」的版本。</p>`})();
   dlg.showModal()};
 window.frmMark=()=>{document.getElementById('rwDlg').close();
   openForm('更新存金基準（新增一筆，歷史全留）',[
@@ -1062,6 +1080,24 @@ const BOARD_MAP=[['benefits','福利費用（勞健退＋年終攤提）'],['租
   ['差旅','差旅費'],['Travel','差旅費'],['合約','合約/顧問服務費'],['Contractual','合約/顧問服務費'],
   ['專案費用','專案(活動)費用'],['Proje','專案(活動)費用']];
 const boardCat=c=>{for(const[t,g]of BOARD_MAP)if((c||'').includes(t))return g;return '其他費用'};
+const PAGE_INTRO={master:'這裡看全部同事每個月做哪些案子、各佔多少工作比例。切到「資金視圖」可以看每個月我們自己要掏多少錢。',
+ person:'這裡看一個人的完整安排：每個月做哪些案子、工時上限、薪水、當月工作重點。',
+ projects:'這裡看所有案子的總覽：期間、還剩多少錢、用掉多少、幾個人在做。',
+ project:'這裡看一個案子：預算線、誰在做、每個月要花的業務費、當月重點。',
+ lines:'這裡看所有職位：哪些職位有錢沒人做（可以拿來補別人薪水）、哪些排太多超過預算。',
+ line:'這裡看一個職位：誰做到什麼時候、誰接手，以及這個職位的錢用掉多少。',
+ scenarios:'這裡比較不同的算法版本，選一個當作正式版。AI 或財務提的建議也會出現在這裡。',
+ compare:'這裡並排比較兩個版本差在哪：我們自己要出多少錢、誰的工作變了、哪幾格不一樣。',
+ amend:'這裡是待辦與死線：要跟 NED 談的改動、同事送來的修改建議、已送出的財報鎖定、收款排程。'};
+const TERMS={'LOE':'工作比例：一個人某個月有多少比例的時間放在這個案子上。100%＝全職都在這個案子。',
+'pipeline':'還在談、還沒簽約的案子。',
+'Attachment B':'NED 補助合約的預算附件，列出每條預算線核准多少錢。',
+'grant':'補助款——donor（資助單位）給的錢，只能用在合約約定的用途上。',
+'rebudget':'把某條預算線用不完的錢，經 NED 同意挪去補另一條線。',
+'CDM':'NED 合約裡指定的一塊工作，錢和時程都不動。',
+'ring fence':'不可動用：這筆錢綁定特定用途，不能挪作他用。'};
+function termTip(t){const d=TERMS[t];return d?`<abbr title="${d}" style="text-decoration:underline dotted;cursor:help">${t}</abbr>`:t}
+function pageIntro(page){const t=PAGE_INTRO[page];return t?`<p class="banner" style="border-left:3px solid var(--fN)">${t}</p>`:''}
 function vMaster(){
   let provAmt=0,provWt=0;
   W.forEach(a=>{if(a.provisional){const v=+a.amount_twd||0;provAmt+=v;
@@ -1072,7 +1108,7 @@ function vMaster(){
   const openGates=DB.gates.filter(g=>g.status==='open').length;
   const nProp=DB.proposals.filter(x=>x.status==='pending').length;
   const commonCards=`<div class="card"><div class="l"><svg class="icon"><use href="#i-user"/></svg> 未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
-   <div class="card ${nProp?'prov':''}"><div class="l"><svg class="icon"><use href="#i-pen"/></svg> 待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>`;
+   <div class="card ${nProp?'prov':''}"><div class="l"><svg class="icon"><use href="#i-pen"/></svg> 待處理的修改建議</div><div class="v num">${nProp}</div><div class="s">前端修改建議→財務/CEO 接受</div></div>`;
   let h=`<div class="cards">
    ${isAdmin()?(()=>{
      const scnH=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;
@@ -1087,21 +1123,21 @@ function vMaster(){
        ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l"><svg class="icon"><use href="#i-bolt"/></svg> Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
        :(()=>{const c=cumOf(ACTIVE);
          return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 累計存金投入（H1 交換後＋計劃）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b></div>${cumSVG(c,210,34,false)}</div>`})();
-     return c1+rwCard+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
-   <div class="card ${openGates?'crit':''}"><div class="l"><svg class="icon"><use href="#i-cal"/></svg> 開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
+     return c1+rwCard+`<div class="card prov"><div class="l">還沒確定的金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」算法，另計不混算${provWt&&!MASK?'｜打折後的估計 '+wan(provWt):''}</div></div>
+   <div class="card ${openGates?'crit':''}"><div class="l"><svg class="icon"><use href="#i-cal"/></svg> 待辦死線</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
   ${isAdmin()?`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><div class="seg" style="width:220px"><button class="${VIEW==='load'?'on':''}" onclick="setView('load')">負載視圖</button><button class="${VIEW==='fund'?'on':''}" onclick="setView('fund')">資金視圖</button></div><button class="hbtn" onclick="frmPerson()">＋新增同事</button></div>`:''}
   ${isAdmin()&&VIEW==='fund'
     ?`<div class="legend"><span><b style="background:color-mix(in oklab,var(--good) 40%,transparent)"></b>全 grant 覆蓋</span><span><b style="background:color-mix(in oklab,var(--warn) 45%,transparent)"></b>部分存金（格內＝存金額）</span><span><b style="background:color-mix(in oklab,var(--crit) 45%,transparent)"></b>全存金/無資金</span><span><b style="border:2px solid var(--crit);background:transparent"></b>有薪無配置（雙重警報）</span></div>`
-    :`<div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>`}
+    :`<div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>還沒確定</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝修改建議待接受</span></div>`}
   ${yearJump()}
   <div class="tblwrap"><table><thead><tr><th>人員</th>${thead()}</tr></thead><tbody>`;
   const fund=isAdmin()&&VIEW==='fund';
   const intMonth={},provMonth={};M.forEach(m=>{intMonth[m]=0;provMonth[m]=0});
   DB.people.forEach(p=>{
     if(p.id==='tara')return;
-    h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
+    h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">未定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
     M.forEach(m=>{
       if(fund){
         const f=fundOf(p.id,m);
@@ -1110,8 +1146,8 @@ function vMaster(){
         if(provPerson)provMonth[m]+=f.internal;else intMonth[m]+=f.internal;
         const prov=f.rows.some(a=>a.provisional);
         const tip=f.rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')
-          +(f.gap>0.5?`&#10;⚠ 未覆蓋缺口 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'')
-          +(provPerson?'&#10;（暫定人力，列於下方另計列）':'');
+          +(f.gap>0.5?`&#10;⚠ 沒人付的部分 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'')
+          +(provPerson?'&#10;（還沒確定要聘的人，列於下方另計列）':'');
         let cls,txt;
         if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
         else if(f.internal<=500){cls='fG';txt=Math.round(loeOf(p.id,m).used)}
@@ -1127,32 +1163,32 @@ function vMaster(){
       const over=used>cap+0.5;
       const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
       const nt=noteOf('person',p.id,m);
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過他的工時上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
     });
     h+='</tr>';
   });
   if(fund){
     h+=`<tr class="introw"><td><b>薪資·存金投入（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>provMonth[m]>500))
-      h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">暫定人力·存金投入（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+      h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">還沒確定要聘的人·存金投入（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     const eB={},eN={};M.forEach(m=>{const e=expInt(ACTIVE,m);eB[m]=e.ben;eN[m]=e.np});
     const estAny=EXP.some(e=>e.scenario_id===ACTIVE&&e.category==='benefits'&&(e.item||'').includes('（含估）'));
     if(M.some(m=>eB[m]>500))
-      h+=`<tr class="introw"><td><b style="font-weight:600">福利·存金投入（即時派生）${estAny?'<span style="color:var(--warn)" title="部分人月無模型基準，採有效費率估算">估</span>':''}</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
+      h+=`<tr class="introw"><td><b style="font-weight:600">福利·存金投入（自動算出來的）${estAny?'<span style="color:var(--warn)" title="部分人月無模型基準，採有效費率估算">估</span>':''}</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>eN[m]>500))
       h+=`<tr class="introw"><td><b style="font-weight:600">非人事·存金投入（支出計劃）</b></td>${M.map(m=>`<td><span class="cell num">${eN[m]>500?k(eN[m]):'0'}</span></td>`).join('')}</tr>`;
     const tot={};let grand=0;M.forEach(m=>{tot[m]=intMonth[m]+eB[m]+eN[m];grand+=tot[m]});
-    h+=`<tr class="introw grand"><td><b>月合計（帳面）</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
+    h+=`<tr class="introw grand"><td><b>這個月我們自己要出多少</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
     var fundGrand=grand; // 供下方對帳註記
   }
   h+='</tbody></table></div>';
   h+=fund
-    ?`<p class="note">資金視圖（資金水位）：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&hd.aug_jan_internal!=null))return '';
+    ?`<p class="note">這張表在回答：<b>每個人的薪水，那個月是誰付的</b>。綠色＝補助款全額支付；黃色＝一部分要我們自己出（格子裡的數字就是我們出的錢）；紅色＝整份都我們自己出；粗紅框＝有薪水但沒排任何工作（既沒工作也沒錢，最該處理）。按上面「金額」鈕可以把數字遮起來（顏色會留著）。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&hd.aug_jan_internal!=null))return '';
       const AJ=M.filter(m=>m>='202608'&&m<='202701');
       const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
       const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
-      return `<br>🔗 <b>對帳鏈（Aug–1月）</b>：薪資實 ＋ 暫定另計 ＋ 福利 ＋ 非人事 ＝ ${money(chain.toLocaleString('zh-TW'))} ↔ KPI 帳面 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
-    :'<p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
+      return `<br>🔗 <b>自動核對（Aug–1月）</b>：薪資實 ＋ 未定另計 ＋ 福利 ＋ 非人事 ＝ ${money(chain.toLocaleString('zh-TW'))} ↔ KPI 算出來的數 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
+    :'<p class="note">格子裡的數字＝那個人那個月的<abbr title="工作比例：一個人某個月有多少比例的時間放在這個案子上。100%＝全職都在這個案子。" style="text-decoration:underline dotted;cursor:help">工作比例（LOE）</abbr>。紅色＝還有時間沒被分配到工作；虛線框＝這個安排還沒確定；⏳＝有人提了修改建議還沒處理。點一列看那個人的細節。</p>';
   h+=farNote();
   return h;
 }
@@ -1167,7 +1203,7 @@ function mySummary(pid){
     if(!cur||cur.s!==s){cur={s,start:m,end:m};runs.push(cur)}else cur.end=m});
   const parts=runs.filter(r=>r.s!=='').map(r=>{
     const mix=personMonth(pid,r.start).sort((a,b)=>(+b.loe_pct||0)-(+a.loe_pct||0)).map(a=>
-      `<b style="color:var(${PC[a.project_id]||'--ink'})">${SHORT[a.project_id]||(prmap[a.project_id]&&prmap[a.project_id].name)||a.project_id} ${Math.round(a.loe_pct!=null?+a.loe_pct:0)}%</b>${prmap[a.project_id]&&prmap[a.project_id].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋');
+      `<b style="color:var(${PC[a.project_id]||'--ink'})">${SHORT[a.project_id]||(prmap[a.project_id]&&prmap[a.project_id].name)||a.project_id} ${Math.round(a.loe_pct!=null?+a.loe_pct:0)}%</b>${prmap[a.project_id]&&prmap[a.project_id].provisional?'<span class="prov-badge">未定</span>':''}`).join('＋');
     return `<b>${lbl(r.start)}${r.end!==r.start?'–'+lbl(r.end):''}</b>：${mix}`;
   });
   const emptyTail=runs.length&&runs[runs.length-1].s===''?runs[runs.length-1]:null;
@@ -1177,8 +1213,8 @@ function mySummary(pid){
     extra='<br><span style="color:var(--ink2)">12月：AIT(SE) 於 12/14 結案，該月按 12/1–14 與 12/15–31 分段計。</span>';
   const pends=Object.values(pending).filter(x=>(x.target_pk||{}).person_id===pid).length;
   return `<div class="mysum">📋 <b>${p.alias||p.name}</b> 的配置摘要——${parts.join('；')||'（目前無配置）'}${tail}。
-    每月所有專案加總不超過你的容量上限（現行 ${capOf(pid,M[0])}%）。虛線＝尚待簽約/核准的暫定安排。${extra}
-    ${pends?`<br><span style="color:var(--warn)">⏳ 你有 ${pends} 筆修改提案等待財務/CEO 套用。</span>`:''}
+    每月所有專案加總不超過你的容量上限（現行 ${capOf(pid,M[0])}%）。還沒確定框＝還沒確定的安排（案子還沒簽約／人還沒聘／安排還沒核准）。${extra}
+    ${pends?`<br><span style="color:var(--warn)">⏳ 你有 ${pends} 筆修改修改建議等待財務/CEO 接受。</span>`:''}
   </div>`;
 }
 function vPerson(pid){
@@ -1189,17 +1225,17 @@ function vPerson(pid){
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
     <span class="pill">${p.type==='employee'?'員工':p.type==='contractor'?'顧問':'時薪'}</span>
     <span class="pill num">容量上限 ${capOf(pid,M[0])}%</span>
-    ${p.provisional?'<span class="prov-badge">暫定人員</span>':''}
+    ${p.provisional?'<span class="prov-badge">還沒確定要聘的人</span>':''}
     <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
     ${isAdmin()?`<button class="hbtn" onclick="frmDate('${pid}','hire')">設到職日</button><button class="hbtn" onclick="frmDate('${pid}','departure')">設離職日</button>`:''}
     <span style="font-size:12px;color:var(--ink3)">${p.note||''}</span></div>`;
   h+=mySummary(pid);
   if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
   h+=yearJump();
-  h+=`<div class="tblwrap"><table><thead><tr><th>專案</th>${thead()}</tr></thead><tbody>`;
+  h+=`<div class="tblwrap"><table><thead><tr><th>案子</th>${thead()}</tr></thead><tbody>`;
   prjs.forEach(pr=>{
     const proj=prmap[pr];
-    h+=`<tr><td class="${isAdmin()?'click':''}" ${isAdmin()?`onclick="location.hash='#project/${pr}'"`:''}><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
+    h+=`<tr><td class="${isAdmin()?'click':''}" ${isAdmin()?`onclick="location.hash='#project/${pr}'"`:''}><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">未定</span>':''}</td>`;
     M.forEach(m=>{
       const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const pd=pending[[pid,m,pr].join('|')];
@@ -1207,14 +1243,14 @@ function vPerson(pid){
       const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
       h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
-        title="${a?k(a.amount_twd):''}｜本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}｜${(a&&a.ned_line)?esc(a.ned_line):'未歸線'}${sealTip(pr,m)}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}${sealMark(pr,m)}</span></td>`;
+        title="${a?k(a.amount_twd):''}｜本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}｜${(a&&a.ned_line)?esc(a.ned_line):'未歸線'}${sealTip(pr,m)}${pd?'｜修改建議中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}${sealMark(pr,m)}</span></td>`;
     });
     h+='</tr>';
   });
   h+=`<tr><td><b>容量上限</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
   M.forEach(m=>{
     const c=capOf(pid,m);
-    h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="依「${(SCNS.find(s=>s.id===ACTIVE)||{}).name||'目前情境'}」用人表">${c}</span></td>`;
+    h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="依「${(SCNS.find(s=>s.id===ACTIVE)||{}).name||'目前版本'}」用人表">${c}</span></td>`;
   });
   h+='</tr>';
   h+=`<tr><td><b>剩餘容量</b></td>`;
@@ -1229,13 +1265,13 @@ function vPerson(pid){
     h+=`<tr><td><b>💰 月成本</b><span class="tag">可點編·調薪</span></td>`;
     M.forEach(m=>{
       const c=costOf(pid,m);
-      h+=`<td><span class="cell num capEdit" onclick="frmSalary('${pid}','${m}')" title="點擊自某月起調整月成本（寫入目前情境）">${c?k(c):'—'}</span></td>`;
+      h+=`<td><span class="cell num capEdit" onclick="frmSalary('${pid}','${m}')" title="點擊自某月起調整月成本（寫入目前版本）">${c?k(c):'—'}</span></td>`;
     });
     h+='</tr>';
   }
   h+=`<tr><td><b>📝 當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
   M.forEach(m=>{h+=noteCell('person',pid,m)});
-  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>'+farNote();
+  h+='</tr></tbody></table></div><p class="note">點任何一格可以提出修改建議（送出後會先變成待處理，不會直接改到正式資料）'+(isAdmin()?'；「工時上限」那一列點格子可以從某個月起調整；到職／離職日用上面的按鈕設定，當月薪水系統會自動按天數比例算，而且每一次改動都留下紀錄':'')+'。</p>'+farNote();
   h+=notesDigest('person',pid,'本人逐月');
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
@@ -1244,10 +1280,10 @@ function vPerson(pid){
 
 function vProject(pr){
   pr=pr&&prmap[pr]?pr:'ned';const proj=prmap[pr];
-  const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（暫定）':''}</option>`).join('')}</select>`;
+  const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（未定）':''}</option>`).join('')}</select>`;
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-   <a href="#projects" class="hbtn" style="text-decoration:none">≡ 專案總覽</a>${sel}
-   ${proj.provisional?`<span class="prov-badge">${proj.status}·暫定${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
+   <a href="#projects" class="hbtn" style="text-decoration:none">≡ 所有案子</a>${sel}
+   ${proj.provisional?`<span class="prov-badge">${proj.status}·未定${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
    ${isAdmin()&&proj.provisional?`<button class="hbtn" style="color:var(--good);border-color:var(--good)" onclick="promoteProject('${pr}')">✓ 轉正式</button>`:''}
    ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增專案</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增職位線</button>`:''}
    <span style="font-size:12px;color:var(--ink3)">${proj.note||''}</span></div>`;
@@ -1255,7 +1291,7 @@ function vProject(pr){
   if(lines.length){
     const billed={};
     W.forEach(a=>{if(a.project_id===pr&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}}); // 案內聚合——(案,線) 複合鍵
-    h+=`<h2>預算線</h2><div class="tblwrap"><table><thead><tr><th>線</th><th>剩餘(原幣)</th><th>7月</th><th>8–1月已排</th><th>燒耗</th><th>標記</th></tr></thead><tbody>`;
+    h+=`<h2>預算線</h2><div class="tblwrap"><table><thead><tr><th>線</th><th>剩餘(原幣)</th><th>7月</th><th>8–1月已排</th><th>已用比例</th><th>標記</th></tr></thead><tbody>`;
     lines.forEach(b=>{
       const rem=+b.remaining_orig*(b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||31.5):1);
       const jl=+b.july_draw_twd||0;const bd=billed[b.name]||0;
@@ -1293,7 +1329,7 @@ function vProject(pr){
       });
       h+=`<td class="num"><b>${tot>0.5?kExp(tot):'—'}</b></td></tr>`;
     });
-    h+=`</tbody></table></div><p class="note">金額＝該線該月支出計劃合計（黃底＝含存金 payer）；hover 看逐筆；${isAdmin()?'點格編輯（單筆直接改、多筆為追加）；':''}業務費依 CEO 裁定為同事可見。</p>`;
+    h+=`</tbody></table></div><p class="note">每格＝這條預算線那個月計劃要花的錢（黃底＝其中有一部分要我們自己出）；滑鼠移上去看細項；${isAdmin()?'點格編輯（單筆直接改、多筆為追加）；':''}這區同事也看得到。</p>`;
   }
   h+=`<h2>📝 逐月重點（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>—</th>${thead()}</tr></thead><tbody>
     <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
@@ -1307,7 +1343,7 @@ function vProject(pr){
   DB.people.forEach(p=>{if(p.type==='contractor')return;
     let free=0;PLANB().forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal)free+=Math.max(0,cap-used)});
     if(free>5)avail.push([p,free])});
-  h+=`<div><h2>還可以加進來的人</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–1月剩餘容量合計</th></tr></thead><tbody>${avail.sort((a,b)=>b[1]-a[1]).map(([p,f])=>`<tr class="click" onclick="location.hash='#person/${p.id}'"><td>${p.alias||p.name}${p.provisional?'<span class="prov-badge">暫定</span>':''}</td><td class="num">${Math.round(f)}%·月</td></tr>`).join('')||'<tr><td colspan=2>全員滿載——這正是 Plan B 的設計狀態</td></tr>'}</tbody></table></div></div></div>`;
+  h+=`<div><h2>還可以加進來的人</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–1月剩餘容量合計</th></tr></thead><tbody>${avail.sort((a,b)=>b[1]-a[1]).map(([p,f])=>`<tr class="click" onclick="location.hash='#person/${p.id}'"><td>${p.alias||p.name}${p.provisional?'<span class="prov-badge">未定</span>':''}</td><td class="num">${Math.round(f)}%·月</td></tr>`).join('')||'<tr><td colspan=2>全員滿載——這正是 新計劃 的設計狀態</td></tr>'}</tbody></table></div></div></div>`;
   return h;
 }
 
@@ -1315,8 +1351,8 @@ function vProject(pr){
 function vProjects(){
   let h=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
     ${isAdmin()?'<button class="hbtn" onclick="frmProject()">＋新增專案</button>':''}
-    <span class="note" style="margin:0">一列一案；點列進單一專案頁。虛線＝pipeline 暫定。</span></div>
-  <div class="tblwrap"><table><thead><tr><th>專案</th><th>Donor</th><th>期間</th><th>狀態</th><th>預算(TWD)</th><th>已排＋7月</th><th>燒耗</th><th>排程迄月</th><th>人力</th></tr></thead><tbody>`;
+    <span class="note" style="margin:0">一列一案；點列進單一專案頁。還沒確定框＝還沒確定：pipeline 未定。</span></div>
+  <div class="tblwrap"><table><thead><tr><th>案子</th><th>Donor</th><th>期間</th><th>狀態</th><th>預算(TWD)</th><th>已排＋7月</th><th>已用比例</th><th>排程迄月</th><th>人力</th></tr></thead><tbody>`;
   DB.projects.forEach(p=>{
     const mm=String(p.period||'').match(/\[(\d{4})-(\d{2})[^,]*,(\d{4})-(\d{2})-(\d{2})/);
     let per='—';
@@ -1338,7 +1374,7 @@ function vProjects(){
       <td>${budget?`<div class="bar"><i class="${used>budget?'over':''}" style="width:${pct}%"></i></div>`:'—'}</td>
       <td class="num">${lastM?(+lastM.slice(0,4))+'/'+(+lastM.slice(4)):'—'}</td><td class="num">${ppl||'—'}</td></tr>`;
   });
-  h+='</tbody></table></div><p class="note">預算＝各線剩餘合計（原幣×匯率）；已排＝7月草帳＋工作層各月配置；排程迄月＝最後一個有配置的月份。</p>';
+  h+='</tbody></table></div><p class="note">「預算」＝這個案子還剩多少錢；「已排」＝目前計劃已經安排出去的金額（含 7 月的暫記）；「排到」＝目前排到哪個月為止。</p>';
   return h;
 }
 // ---- B5: 職務總覽 ----
@@ -1349,8 +1385,8 @@ function vLines(){
     <button class="hbtn" style="${LF==='all'?'font-weight:700;border-color:var(--ink)':''}" onclick="setLF('all')">全部</button>
     <button class="hbtn" style="${LF==='vacant'?'font-weight:700;border-color:var(--warn)':''}" onclick="setLF('vacant')">有錢沒人（空缺財源）</button>
     <button class="hbtn" style="${LF==='over'?'font-weight:700;border-color:var(--crit)':''}" onclick="setLF('over')">有人沒錢（超編警報）</button>
-    <span class="note" style="margin:0">點列進職務頁看接力時間軸。</span></div>
-  <div class="tblwrap"><table><thead><tr><th>案</th><th>職位線</th><th>類別</th><th>預算(原幣)</th><th>燒耗</th><th>目前在座</th><th>狀態</th></tr></thead><tbody>`;
+    <span class="note" style="margin:0">點列進職務頁看誰做到什麼時候、誰接手。</span></div>
+  <div class="tblwrap"><table><thead><tr><th>案</th><th>職位線</th><th>類別</th><th>預算(原幣)</th><th>已用比例</th><th>目前在座</th><th>狀態</th></tr></thead><tbody>`;
   let n=0;
   const PERSCAT=['Salaries','Personnel','Total'];
   DB.budget_lines.forEach(b=>{
@@ -1368,7 +1404,7 @@ function vLines(){
     const key=encodeURIComponent(b.project_id+'||'+b.name);
     h+=`<tr class="click" onclick="location.hash='#line/${key}'">
       <td><b style="color:var(${PC[b.project_id]||'--ink'})">${SHORT[b.project_id]||b.project_id}</b></td>
-      <td>${b.name}${b.provisional?'<span class="prov-badge">暫定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}</td>
+      <td>${b.name}${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}</td>
       <td>${PERSCAT.includes(b.category)?(b.category||''):`<span style="color:var(--ink3)">${b.category||''}（非人事）</span>`}</td>
       <td class="num">${origMoney(+b.remaining_orig,b.currency)}</td>
       <td><div class="bar"><i class="${over?'over':''}" style="width:${pct}%"></i></div></td>
@@ -1384,10 +1420,10 @@ function vLines(){
       h+=`<tr style="opacity:.7"><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</b></td>
         <td colspan="5"><span style="color:var(--ink3)">未歸線配置 ${k(v)||'（金額隱藏）'}——尚無可靠線對映，不硬猜</span></td><td>—</td></tr>`});
   }
-  h+=`</tbody></table></div><p class="note">「缺」＝有預算但目前起無人在座（＝rebudget 彈藥庫）；「超」＝已排＋7月草帳超過線剩餘（需 rebudget／修約）。ring-fence 線不列入「缺」。線的身分＝（案，線名）——同名線跨案永不合併。</p>`;
+  h+=`</tbody></table></div><p class="note">「缺」＝這個職位有預算卻沒人做——這些是可以拿去補別人薪水的錢；「超」＝已經排出去的比預算多，要跟 NED 談把預算挪過來。標「不可動用」的線不算在「缺」裡面。<b>同名職位如果在不同案子，是兩個不同的職位</b>，各自的預算和人都分開算。</p>`;
   return h;
 }
-// ---- B5: 單一職務頁（接力/並聯時間軸） ----
+// ---- B5: 單一職務頁（接力/同時多人在同一個職位時間軸） ----
 function vLine(keyEnc){
   const[pr,name]=decodeURIComponent(keyEnc||'').split('||');
   const b=DB.budget_lines.find(x=>x.project_id===pr&&x.name===name);
@@ -1396,9 +1432,9 @@ function vLine(keyEnc){
   const allocs=lineAllocs(pr,name);
   const pids=[...new Set(allocs.map(a=>a.person_id))];
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <a href="#lines" class="hbtn" style="text-decoration:none">≡ 職務總覽</a>
+    <a href="#lines" class="hbtn" style="text-decoration:none">≡ 所有職位</a>
     <a href="#project/${pr}" class="hbtn" style="text-decoration:none;color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</a>
-    <b>${name}</b>${b.provisional?'<span class="prov-badge">暫定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}
+    <b>${name}</b>${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}
     <span class="pill num" title="原幣，不隨幣別切換">${origMoney(+b.remaining_orig,b.currency)||'（金額隱藏）'}</span>
     <span class="num" style="font-size:12px;color:${over?'var(--crit)':'var(--ink2)'}">已排 ${k(used)||''}（${Math.round(pct)}%）${over?'⚠ 爆線':''}</span>
     ${isAdmin()?`<button class="hbtn" onclick="frmLineBudget('${pr}','${name.replace(/'/g,"\\'")}')">✎ 改預算額</button>`:''}
@@ -1407,7 +1443,7 @@ function vLine(keyEnc){
   if(!pids.length)h+=`<tr><td colspan="${M.length+1}">目前無人在座${pr!=='ned'&&DB.budget_lines.filter(x=>x.project_id===pr).length>1?'（本案未逐線對映人力）':''}——${isAdmin()?'用「＋安排接替」排人。':''}</td></tr>`;
   pids.forEach(pid=>{
     const p=pmap[pid]||{};
-    h+=`<tr><td class="click" onclick="location.hash='#person/${pid}'"><b>${p.alias||p.name||pid}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
+    h+=`<tr><td class="click" onclick="location.hash='#person/${pid}'"><b>${p.alias||p.name||pid}</b>${p.provisional?'<span class="prov-badge">未定</span>':''}</td>`;
     M.forEach(m=>{
       const a=allocs.find(x=>x.person_id===pid&&x.month===m);
       if(!a||!(+a.amount_twd>0)){h+='<td><span class="cell" style="color:var(--ink3)">·</span></td>';return}
@@ -1417,14 +1453,14 @@ function vLine(keyEnc){
     h+='</tr>';
   });
   h+=`</tbody></table></div>
-  <p class="note">每列＝一位在座者的期間條（格內＝該月 LOE%）；同月多列＝並聯在座。安排接替＝對正式版送「待套用提案」，由財務/CEO 在修約頁套用；系統已先檢查每月容量與累計不爆線。</p>${farNote()}`;
+  <p class="note">一列＝一個人做這個職位的期間（格子裡是他那個月的工作比例）。同一個月出現兩列＝交接期間兩個人同時在這個職位上，這是正常的。按「安排接替」可以排下一個人接手——送出的是建議，要由你或財務在「待辦與死線」頁按接受；系統會先幫你檢查那個人會不會排太滿、這條線的錢夠不夠。</p>${farNote()}`;
   return h;
 }
 window.frmSeat=(pr,name)=>{
   const now=nowMonth();
   const defFrom=M.includes(now)?now:M[0];
   openForm('安排接替／加入：'+(SHORT[pr]||(prmap[pr]||{}).name||pr)+'｜'+name,[
-    {id:'pid',label:'人員',type:'select',value:'',options:[['','（選擇人員）'],...DB.people.filter(p=>p.id!=='tara').map(p=>[p.id,(p.alias||p.name)+(p.provisional?'（暫定）':'')])]},
+    {id:'pid',label:'人員',type:'select',value:'',options:[['','（選擇人員）'],...DB.people.filter(p=>p.id!=='tara').map(p=>[p.id,(p.alias||p.name)+(p.provisional?'（未定）':'')])]},
     {id:'from',label:'起月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
     {id:'to',label:'迄月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
     {id:'loe',label:'LOE %',type:'number',value:50},
@@ -1463,10 +1499,10 @@ window.frmSeat=(pr,name)=>{
         payload:{loe_pct:l,amount_twd:amt,ned_line:name},
         note:'職務頁安排：'+name+'（'+ML[v.from]+'–'+ML[v.to]+'）'});
     }
-    await reload('已送出 '+months.length+' 筆接替提案（修約頁套用後生效）');
+    await reload('已送出 '+months.length+' 筆接替修改建議（跟 NED 談的改動頁接受後生效）');
   });
 };
-// ---- B9: 提案總覽 ----
+// ---- B9: 版本總覽 ----
 function scnRowsOf(id){return DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===id)}
 window.toggScn=id=>{const el=document.getElementById('scnDet_'+id);if(el)el.style.display=el.style.display==='none'?'':'none'};
 window.frmLineBudget=(pr,name)=>{
@@ -1474,10 +1510,10 @@ window.frmLineBudget=(pr,name)=>{
   if(!b)return;
   openForm('✎ 改預算額：'+(SHORT[pr]||pr)+'｜'+name,[
     {id:'amt',label:'新預算額('+b.currency+')',type:'number',value:+b.remaining_orig},
-    {id:'why',label:'原因*',placeholder:'必填：修約核准/計算修正…'},
+    {id:'why',label:'原因*',placeholder:'必填：跟 NED 談的改動核准/計算修正…'},
   ],async v=>{
     const a=+v.amt;if(!(a>=0))throw new Error('金額需 ≥ 0');
-    if(!v.why)throw new Error('原因必填——這是 donor 核准額，改動要留痕');
+    if(!v.why)throw new Error('請填改動原因——這是 NED 核准的預算金額，改了要留紀錄');
     await dbUpd('budget_lines','id=eq.'+b.id,{remaining_orig:a});
     try{await dbIns('audit_log',{actor:ROLE.email,table_name:'budget_lines',row_pk:b.id,action:'line_budget_change',
       before:{remaining_orig:+b.remaining_orig},after:{remaining_orig:a,reason:v.why}})}catch(e){}
@@ -1497,9 +1533,9 @@ window.frmSealReg=()=>openForm('登記已送財報（登記後不可改不可刪
   if(t<f)throw new Error('迄月不可早於起月');
   await dbIns('report_seals',{project_id:v.pr,period_start:f,period_end:t,
     report_name:v.name,submitted_at:v.sub,sealed_by:ROLE.email,note:v.note||null});
-  await reload('已登記封印：'+v.name);
+  await reload('已登記鎖定：'+v.name);
 });
-window.promoteProject=pr=>openForm('轉正式：'+((prmap[pr]||{}).name||pr)+'（虛線→實線，全站統計轉入正式帳面）',[
+window.promoteProject=pr=>openForm('轉正式：'+((prmap[pr]||{}).name||pr)+'（還沒確定→實線，全站統計轉入正式算出來的數）',[
   {id:'ok',label:'輸入 YES 確認',placeholder:'YES'},
 ],async v=>{
   if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
@@ -1530,7 +1566,7 @@ window.frmExp=(pr,gk,m)=>{
     await reload('支出已儲存'+(ACTIVE!==OFFICIAL?'（僅此草稿）':''));
   });
 };
-window.frmSNote=id=>openForm('新增提案備注',[
+window.frmSNote=id=>openForm('新增修改建議備注',[
   {id:'note',label:'備注',type:'textarea',placeholder:'例：這版對交付的影響、需要財務確認的點…'},
 ],async v=>{
   if(!v.note)throw new Error('備注不可空白');
@@ -1548,7 +1584,7 @@ function scnCard(s,mx){
   const canCompare=s.status==='draft'&&(myDrafts().some(x=>x.id===s.id)||aiDrafts().some(x=>x.id===s.id));
   let h=`<tr class="click" onclick="toggScn('${s.id}')" ${isOff?'style="background:color-mix(in oklab,var(--good) 8%,transparent)"':''}>
     <td>${isOff?'📌':ai?'🤖':snap?'📸':s.status==='archived'?'🗄':'🧪'} <b>${s.name||s.id}</b></td>
-    <td><span class="pill ${isOff?'approved':s.status==='draft'?'pending':snap?'sent':'draft'}">${isOff?'正式版':s.status==='draft'?'提案中':snap?'快照':'已歸檔'}</span></td>
+    <td><span class="pill ${isOff?'approved':s.status==='draft'?'pending':snap?'sent':'draft'}">${isOff?'正式版':s.status==='draft'?'修改建議中':snap?'存檔':'已歸檔'}</span></td>
     <td>${ai?'🤖 AI':s.owner?('👤 '+s.owner.split('@')[0]):'—'}</td>
     <td class="num">${s.date||''}</td>
     <td class="num">${k(mx.total)||'—'}</td>
@@ -1563,18 +1599,18 @@ function scnCard(s,mx){
       ${s.status==='archived'?`<button class="miniact" onclick="event.stopPropagation();location.hash='#compare/${s.id}'">與現行正式版比較${snap?'（這個月改了什麼）':''}</button>`:''}
       <button class="miniact" onclick="event.stopPropagation();frmSNote('${s.id}')">＋備注</button>
     </div>
-    ${notes.length?`<div style="margin:6px 0">${notes.map(n=>`<p class="note" style="margin:4px 0">${n.author_type==='ai'?'🤖':'👤'} <b>${esc((n.author||'').split('@')[0])}</b> <span class="num">${(n.created_at||'').slice(0,16).replace('T',' ')}</span>——${esc(n.note)}</p>`).join('')}</div>`:'<p class="note">尚無備注。</p>'}
+    ${notes.length?`<div style="margin:6px 0">${notes.map(n=>`<p class="note" style="margin:4px 0">${n.author_type==='ai'?'🤖':'👤'} <b>${esc((n.author||'').split('@')[0])}</b> <span class="num">${(n.created_at||'').slice(0,16).replace('T',' ')}</span>——${esc(n.note)}</p>`).join('')}</div>`:'<p class="note">還沒有人留言。</p>'}
   </td></tr>`;
   return h;
 }
 function vScenarios(){
-  const head=`<thead><tr><th>提案/情境</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金投入</th><th>超容量</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
+  const head=`<thead><tr><th>修改建議/版本</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金投入</th><th>排太滿</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
   const snapBtn=`<div style="display:flex;gap:8px;align-items:center;margin:0 0 8px">
-    <button class="hbtn" onclick="manualSnapshot()">📸 立即快照</button>
-    <span class="note" style="margin:0">每月首筆正式版修改會自動留存上月狀態；大改前也可手動留檔。快照只供比較、不可定案。</span></div>`;
+    <button class="hbtn" onclick="manualSnapshot()">📸 立即存檔</button>
+    <span class="note" style="margin:0">每月首筆正式版修改會自動留存上月狀態；大改前也可手動留檔。存檔只供比較、不可採用。</span></div>`;
   const act=[...SCNS].filter(s=>s.status!=='archived').sort((a,b)=>(a.status==='official'?-1:1)-(b.status==='official'?-1:1));
   const arc=SCNS.filter(s=>s.status==='archived');
-  let h=snapBtn+`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金投入＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
+  let h=snapBtn+`<p class="note">一列＝一個版本。「用到哪些案子」欄看得出各版本的差別（某個案子沒出現＝這個版本沒用到它）。「我們自己要出的錢」不含還沒確定要聘的人。點一列展開提案說明與討論串；討論只有你、財務和 AI 看得到，而且<b>只能新增不能刪改</b>（寫錯就再留一則更正）。</p>
   <div class="tblwrap"><table>${head}<tbody>`;
   act.forEach(s=>{h+=scnCard(s,scnMetrics(scnRowsOf(s.id),s.id))});
   h+='</tbody></table></div>';
@@ -1586,9 +1622,9 @@ function vScenarios(){
   }
   return h;
 }
-// ---- B6: 情境比較 ----
+// ---- B6: 版本比較 ----
 function scnMetrics(arr,scnId){
-  const sv=W,sc=CTXSCN;W=arr;CTXSCN=scnId||null; // 用該情境的用人表算
+  const sv=W,sc=CTXSCN;W=arr;CTXSCN=scnId||null; // 用該版本的用人表算
   let internal=0,over=0,total=0;
   DB.people.forEach(p=>{const provP=p.provisional&&p.id!=='newfo';
     M.forEach(m=>{
@@ -1598,7 +1634,7 @@ function scnMetrics(arr,scnId){
   arr.forEach(a=>total+=+a.amount_twd||0);
   W=sv;CTXSCN=sc;return{internal,over,total};
 }
-const STALE_MSG='⚠ 本草稿變更用人，福利列未重算（仍為模型版）——帳面合計僅供參考';
+const STALE_MSG='⚠ 本草稿變更用人，福利列未重算（仍為模型版）——我們自己要出的總額僅供參考';
 const staffStale=scnId=>scnId&&scnId!==OFFICIAL&&staffDiff(OFFICIAL,scnId).length>0;
 function staffDiff(offScn,drScn){ // B10: 用人差異（薪資/容量/起訖）
   const out=[];
@@ -1624,10 +1660,10 @@ function staffDiff(offScn,drScn){ // B10: 用人差異（薪資/容量/起訖）
   return out;
 }
 function vCompare(cmpId){
-  // cmpId＝歷史版（快照/歸檔）比較模式：base=歷史（舊）、target=現行正式版（新）→ 回答「改了什麼」
+  // cmpId＝歷史版（存檔/歸檔）比較模式：base=歷史（舊）、target=現行正式版（新）→ 回答「改了什麼」
   const hist=cmpId?SCNS.find(s=>s.id===cmpId):null;
   if(cmpId&&(!hist||hist.status!=='archived'))return '<p class="banner err">找不到這個歷史版本。</p>';
-  if(!cmpId&&ACTIVE===OFFICIAL)return '<p class="banner">目前在正式版——先用右上「＋情境」開草稿；或到「提案」頁對快照/歸檔版按比較。</p>';
+  if(!cmpId&&ACTIVE===OFFICIAL)return '<p class="banner">目前在正式版——先用右上「＋開新版本」開草稿；或到「修改建議」頁對存檔/歸檔版按比較。</p>';
   const baseId=cmpId?cmpId:OFFICIAL, targetId=cmpId?OFFICIAL:ACTIVE;
   const off=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===baseId);
   const dr=cmpId?DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL):W;
@@ -1637,19 +1673,19 @@ function vCompare(cmpId){
   const dTag=v=>v>500?`<span style="color:var(--crit)">▲${k(v)}</span>`:v<-500?`<span style="color:var(--good)">▼${k(-v)}</span>`:'—';
   const dN=v=>v>0?`<span style="color:var(--crit)">▲${v}</span>`:v<0?`<span style="color:var(--good)">▼${-v}</span>`:'—';
   const ai=isAiOwner(scn.owner);
-  const hl=s=>{const hd=(s||{}).headline;if(!hd)return '（無帳面標題）';
+  const hl=s=>{const hd=(s||{}).headline;if(!hd)return '（無算出來的數標題）';
     if(+hd.fy2026_loss_best)return (hd.label||'')+' '+wan(+hd.fy2026_loss_best)+'–'+wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best);
     if(+hd.aug_jan_internal)return (hd.label||'')+' '+wan(+hd.aug_jan_internal);
-    return '（無帳面標題）'};
+    return '（無算出來的數標題）'};
   const baseTag=cmpId?`${isSnap(hist)?'📸':'🗄'} ${offName}`:`📌 ${offName}`;
   const targetTag=cmpId?`📌 現行正式版`:`${ai?'🤖':'🧪'} ${scn.name||ACTIVE}`;
   const baseHead=cmpId?'歷史版':'正式版', targetHead=cmpId?'現行':'草稿';
   let h=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <b>${cmpId?'歷史比較（改了什麼）：':'情境比較：'}</b><span class="pill">${baseTag}</span> vs <span class="pill" style="border-style:dashed">${targetTag}</span>
-    ${cmpId?'':'<button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>'}
-    <a class="hbtn" href="${cmpId?'#scenarios':'#master'}" style="text-decoration:none">${cmpId?'回提案總覽':'回總表'}</a></div>
-  <p class="note" style="margin:0 0 10px">帳面口徑：${baseTag.slice(0,2)} ${hl(cmpId?hist:SCNS.find(s=>s.id===OFFICIAL))}　｜　${targetTag.slice(0,2)} ${hl(scn)}</p>
-  ${!cmpId&&scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}
+    <b>${cmpId?'歷史比較（改了什麼）：':'版本比較：'}</b><span class="pill">${baseTag}</span> vs <span class="pill" style="border-style:dashed">${targetTag}</span>
+    ${cmpId?'':'<button class="miniact ok" onclick="finalizeScn()">採用這個版本</button>'}
+    <a class="hbtn" href="${cmpId?'#scenarios':'#master'}" style="text-decoration:none">${cmpId?'回版本總覽':'回總表'}</a></div>
+  <p class="note" style="margin:0 0 10px">算出來的數算法：${baseTag.slice(0,2)} ${hl(cmpId?hist:SCNS.find(s=>s.id===OFFICIAL))}　｜　${targetTag.slice(0,2)} ${hl(scn)}</p>
+  ${!cmpId&&scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 為什麼這樣建議</b>：':'📝 <b>這個版本在做什麼</b>：'}${scn.rationale}</div>`:''}
   ${cmpId?`<div class="mysum" style="border-left-color:var(--fP)">📸 ${esc(hist.note||'')}（留存於 ${hist.date||''}）——下表差異＝從這份歷史狀態到現在的所有變動。</div>`:''}
 `;
   h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>${baseHead}</th><th>${targetHead}</th><th>差異</th></tr></thead><tbody>
@@ -1657,8 +1693,8 @@ function vCompare(cmpId){
     ${(()=>{const eo=M.reduce((s,m)=>{const e=expInt(baseId,m);return s+e.ben+e.np},0);
       const ed=M.reduce((s,m)=>{const e=expInt(targetId,m);return s+e.ben+e.np},0);
       return `<tr><td>福利＋非人事（存金）</td><td class="num">${k(eo)||'0'}</td><td class="num">${k(ed)||'0'}</td><td class="num">${dTag(ed-eo)}</td></tr>
-      <tr><td><b>帳面合計</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
-    <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
+      <tr><td><b>我們自己要出的總額</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
+    <tr><td>排太滿格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
     ${(()=>{const ro=runwayOf(baseId),rd2=runwayOf(targetId);
       if(ro&&rd2){
@@ -1690,9 +1726,9 @@ function vCompare(cmpId){
     const ao=o?+o.amount_twd||0:0,ad=d?+d.amount_twd||0:0;
     if(lo!==ld||Math.abs(ao-ad)>1)diffs.push({kk,lo,ld,ao,ad})});
   h+=`<h2>逐格差異（${diffs.length} 筆）</h2>`;
-  if(!diffs.length)h+='<p class="note">草稿與正式版目前完全相同。</p>';
+  if(!diffs.length)h+='<p class="note">這個版本目前跟正式版一模一樣，沒有任何差別。</p>';
   else{
-    h+=`<div class="tblwrap"><table><thead><tr><th>人員</th><th>月份</th><th>專案</th><th>LOE</th><th>金額</th></tr></thead><tbody>`;
+    h+=`<div class="tblwrap"><table><thead><tr><th>人員</th><th>月份</th><th>案子</th><th>LOE</th><th>金額</th></tr></thead><tbody>`;
     diffs.forEach(x=>{
       const[pid,m,pr]=x.kk.split('|');
       h+=`<tr class="click" onclick="location.hash='#person/${pid}'">
@@ -1703,17 +1739,17 @@ function vCompare(cmpId){
     });
     h+='</tbody></table></div>';
   }
-  h+='<p class="note">點任一筆跳到該人個人頁對照。定案＝整份取代正式版（舊版歸檔可回看）；不做即時合併——想法不同就各開一份草稿來比。</p>';
+  h+='<p class="note">點任何一筆可以跳到那個人的頁面對照。按「採用這個版本」＝整份取代現在的正式版，舊版會自動存進歷史區隨時可回看。想法不同的人各開各的版本再來比，系統不會幫你們合併。</p>';
   return h;
 }
 function vAmend(){
-  let h=`<p class="banner">本頁 Amendment 差異清單＝「<b>Plan B 提案</b>」相對 donor 核准版（approved 層）的修約項目；目前檢視情境：<b>${(SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE}</b>。</p>
-  <h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
+  let h=`<p class="banner">本頁 要跟 NED 談的改動清單＝「<b>新計劃</b>」相對 donor 核准版（approved 層）的要跟 NED 談的改動；目前檢視版本：<b>${(SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE}</b>。</p>
+  <h2>要跟 NED 談的改動</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
   DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
   h+=`</tbody></table></div>
-  <h2>待套用提案（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>提案人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
+  <h2>待處理的修改建議（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>建議人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
   const props=DB.proposals.slice(0,50);
-  if(!props.length)h+='<tr><td colspan=7>尚無提案</td></tr>';
+  if(!props.length)h+='<tr><td colspan=7>尚無修改建議</td></tr>';
   props.forEach(x=>{
     const t=x.target_pk||{};
     const who=pmap[t.person_id]?(pmap[t.person_id].alias||pmap[t.person_id].name):(t.person_id||'');
@@ -1721,17 +1757,17 @@ function vAmend(){
       <td>${who} ${ML[t.month]||t.month||''} ${SHORT[t.project_id]||t.project_id||''}</td>
       <td class="num">LOE→${x.payload&&x.payload.loe_pct!=null?x.payload.loe_pct+'%':JSON.stringify(x.payload)}${x.note?'｜'+x.note:''}</td>
       <td><span class="pill ${x.status}">${x.status}</span></td>
-      ${isAdmin()?`<td>${(x.status==='pending'||x.status==='needs_review')?`<button class="miniact ok" onclick="applyProposal(${x.id})">套用</button><button class="miniact no" onclick="rejectProposal(${x.id})">退回</button>`:''}</td>`:''}</tr>`;
+      ${isAdmin()?`<td>${(x.status==='pending'||x.status==='needs_review')?`<button class="miniact ok" onclick="applyProposal(${x.id})">接受</button><button class="miniact no" onclick="rejectProposal(${x.id})">退回</button>`:''}</td>`:''}</tr>`;
   });
-  h+=`</tbody></table></div><p class="note">套用＝寫入 working 層配置並轉 applied；退回＝標 rejected 附理由。套用後總表格子由 ⏳ 虛線轉實。</p>
-  <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
+  h+=`</tbody></table></div><p class="note">「接受」＝把這個建議寫進正式資料；「不接受」＝退回並留下理由。接受之後，總表上那格的 ⏳ 就會變成正式數字。</p>
+  <h2>待辦事項</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>待辦</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
   ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
   </tbody></table></div>
-  <h2><svg class="icon"><use href="#i-lock"/></svg> 財報封印</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
-  ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——第一份送出當天請在此登記</td></tr>'}
+  <h2><svg class="icon"><use href="#i-lock"/></svg> 已送財報·鎖定</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
+  ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——等哪天真的把財報寄出去了，那天回來這裡登記一下</td></tr>'}
   </tbody></table></div>
   <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
-  <span class="note" style="margin:0">登記後該期間各格出現 <svg class="icon sm"><use href="#i-lock"/></svg>；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
+  <span class="note" style="margin:0">登記之後，那段期間的格子都會出現鎖頭圖示。之後要改那些月份，系統會先問你原因、要你打 YES 確認，並留下紀錄。<b>登記不能改也不能刪</b>——報表送出去是事實。</span></div>
   ${isAdmin()?(()=>{ // B20：收款排程＋墊款警示
     const byPr={};RCPT.forEach(r=>{(byPr[r.project_id]=byPr[r.project_id]||[]).push(r)});
     const rows=Object.keys(byPr).map(pr=>{
@@ -1743,7 +1779,7 @@ function vAmend(){
     return `<h2><svg class="icon"><use href="#i-coin"/></svg> 收款排程（grant 分期）</h2><div class="tblwrap"><table><thead><tr><th></th><th>預計月</th><th>金額(原幣)</th><th>≈TWD</th><th>狀態</th><th>備註</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan=7>尚未登記任何收款排程</td></tr>'}</tbody></table></div>
     <div style="margin:-6px 0 14px"><button class="hbtn" onclick="frmReceipt()">＋登記收款</button>
     <span class="note" style="margin:0">墊款＝該案累計計劃支出＞累計已到帳的部分；grant 款限定用途，不加入存金水位線。</span></div>`})():''}
-  ${isAdmin()?(()=>{ // B20：理監事科目視圖（板會口徑；資料 member 本可讀，本頁路由屬 admin——要開放給 member 時搬區塊即可）
+  ${isAdmin()?(()=>{ // B20：理監事科目視圖（板會算法；資料 member 本可讀，本頁路由屬 admin——要開放給 member 時搬區塊即可）
     const g={};let sT=0,sI=0;
     DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
       M.forEach(m=>{const f=fundOf(p.id,m);if(!f.active)return;sT+=f.sal;sI+=f.internal})});
@@ -1757,7 +1793,7 @@ function vAmend(){
     ${rows.map(r=>`<tr><td>${r[0]}</td><td class="num">${k(r[1])||'0'}</td><td class="num">${k(r[2])||'0'}</td><td class="num">${k(r[3])||'0'}</td></tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${k(tot[1])}</b></td><td class="num"><b>${k(tot[2])}</b></td><td class="num"><b>${k(tot[3])}</b></td></tr>
     </tbody></table></div>
-    <p class="note">分組規則＝程式內 BOARD_MAP 常數（category 關鍵字對照，可調）；薪資列＝用人表口徑（grant 份＝薪資−存金份）。</p>`})():''}
+    <p class="note">科目怎麼分組是寫死在程式裡的對照表，要調整跟開發者說一聲。薪資那列的「補助款支付」＝總薪資扣掉我們自己出的部分。</p>`})():''}
   ${isAdmin()?(()=>{
     const rows=AUD.filter(x=>(!AUDF.t||x.table_name===AUDF.t)&&(!AUDF.a||String(x.actor||'').includes(AUDF.a)));
     const tables=[...new Set(AUD.map(x=>x.table_name))];
@@ -1765,7 +1801,7 @@ function vAmend(){
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <select onchange="setAudF('t',this.value)"><option value="">全部表</option>${tables.map(t=>`<option ${AUDF.t===t?'selected':''}>${t}</option>`).join('')}</select>
       <input type="text" placeholder="篩操作者" value="${esc(AUDF.a)}" onchange="setAudF('a',this.value)" style="width:130px">
-      <span class="note" style="margin:0">DB 觸發器層全記（REST/psql 都逃不掉）；草稿沙盒與快照不記。</span></div>
+      <span class="note" style="margin:0">DB 觸發器層全記（REST/psql 都逃不掉）；草稿沙盒與存檔不記。</span></div>
     <div class="tblwrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>時間</th><th>操作者</th><th>表</th><th>鍵</th><th>動作</th><th>變更摘要</th></tr></thead><tbody>
     ${rows.slice(0,120).map(x=>{
       let sum='';
@@ -1780,7 +1816,7 @@ function vAmend(){
   <h2>匯率設定</h2><div class="tblwrap"><table><thead><tr><th>幣別</th><th>1 單位 ＝ TWD</th><th>生效日</th><th></th></tr></thead><tbody>
   <tr><td>USD</td><td class="num">${RATES.USD}</td><td class="num" rowspan="2" style="vertical-align:middle">${RATES.asof||'—'}</td><td rowspan="2" style="vertical-align:middle"><button class="hbtn" onclick="frmFx()">編輯</button></td></tr>
   <tr><td>EUR</td><td class="num">${RATES.EUR}</td></tr>
-  </tbody></table></div><p class="note">匯率僅影響顯示換算（≈），帳務與資料庫仍以 TWD／原幣記。</p>
+  </tbody></table></div><p class="note">換匯率只影響畫面上看到的數字（所以標「≈」），實際帳還是用台幣／原幣記的。</p>
   <h2>決策日誌</h2><div class="tblwrap"><table><tbody>
   ${DB.decisions.map(d=>`<tr><td class="num">${d.id}</td><td class="num">${d.date}</td><td>${d.title}</td></tr>`).join('')}
   </tbody></table></div>`;
@@ -1808,11 +1844,11 @@ window.openEdit=(pid,m,pr)=>{
   const othersLoe=Math.max(0,loeOf(pid,m).used-cur);
   edCtx={pid,m,pr,sal:costOf(pid,m),cap:capOf(pid,m),othersLoe};
   const draft=isAdmin()&&ACTIVE!==OFFICIAL;
-  document.getElementById('edTitle').textContent=`${draft?'草稿修改':'提案'}：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||(prmap[pr]&&prmap[pr].name)||pr}`;
+  document.getElementById('edTitle').textContent=`${draft?'草稿修改':'修改建議'}：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||(prmap[pr]&&prmap[pr].name)||pr}`;
   document.getElementById('edAuthor').closest('.row').style.display=draft?'none':'';
   document.querySelector('#editDlg .note').textContent=draft
-    ?'草稿情境：儲存＝直接寫入你的草稿（不影響正式版；定案後才生效）。'
-    :'送出後為「待套用」提案（虛線標示），由財務/CEO 核可後寫入正式資料。';
+    ?'草稿版本：儲存＝直接寫入你的草稿（不影響正式版；採用後才生效）。'
+    :'送出後為「待接受」修改建議（還沒確定標示），由財務/CEO 核可後寫入正式資料。';
   document.getElementById('edAmt').closest('.row').style.display=isAdmin()?'':'none';
   document.getElementById('edLoe').value=cur;
   document.getElementById('edAuthor').value=localStorage.getItem('cr_author')||'';
@@ -1824,7 +1860,7 @@ function updAmt(){if(!edCtx)return;const l=+document.getElementById('edLoe').val
   document.getElementById('edAmt').textContent=k(edCtx.sal/edCtx.cap*l);
   const total=edCtx.othersLoe+l;
   if(l<0)edError('LOE 不可為負數');
-  else if(total>edCtx.cap+0.5)edError(`此月合計將達 ${Math.round(total)}%，超過容量上限 ${edCtx.cap}%`);
+  else if(total>edCtx.cap+0.5)edError(`此月合計將達 ${Math.round(total)}%，超過他的工時上限 ${edCtx.cap}%`);
   else edError(null);}
 document.getElementById('edLoe').addEventListener('input',updAmt);
 document.getElementById('edCancel').onclick=()=>document.getElementById('editDlg').close();
@@ -1832,8 +1868,8 @@ document.getElementById('edSave').onclick=async()=>{
   const l=+document.getElementById('edLoe').value;
   const total=edCtx.othersLoe+l;
   if(l<0||total>edCtx.cap+0.5){updAmt();return}
-  if(isAdmin()&&ACTIVE!==OFFICIAL){ // 草稿：直接寫入，不走提案
-    if(!canEditScn()){edError('這是 AI（或他人）的草稿，對你唯讀——請用「與正式版比較」後決定定案或封存。');return}
+  if(isAdmin()&&ACTIVE!==OFFICIAL){ // 草稿：直接寫入，不走修改建議
+    if(!canEditScn()){edError('這是 AI（或他人）的草稿，對你唯讀——請用「與正式版比較」後決定採用或封存。');return}
     const t=edCtx;const amt=Math.round(t.sal/t.cap*l);
     const exist=W.find(a=>a.person_id===t.pid&&a.month===t.m&&a.project_id===t.pr);
     try{
@@ -1846,7 +1882,7 @@ document.getElementById('edSave').onclick=async()=>{
     await reload('草稿已更新');return;
   }
   const author=document.getElementById('edAuthor').value.trim();
-  if(!author){edError('請填提案人名字');return}
+  if(!author){edError('請填建議人名字');return}
   localStorage.setItem('cr_author',author);
   const body={author,target_table:'allocations',action:'update',
     target_pk:{person_id:edCtx.pid,month:edCtx.m,project_id:edCtx.pr},
@@ -1858,7 +1894,7 @@ document.getElementById('edSave').onclick=async()=>{
   catch(e){edError('送出失敗：'+e.message);return}
   if(!r.ok){edError('送出失敗（'+r.status+'），請稍後再試');return}
   document.getElementById('editDlg').close();
-  await reload('提案已送出');
+  await reload('修改建議已送出');
 };
 
 // ---- shell ----
@@ -1869,7 +1905,7 @@ function route(){
   if(!isAdmin()){
     if(['lines','line','amend','compare','scenarios'].includes(page)){
       document.getElementById('title').textContent='僅限管理者';
-      document.getElementById('app').innerHTML='<p class="banner err">此頁僅管理者可見。</p>';
+      document.getElementById('app').innerHTML='<p class="banner err">這一頁只有你和財務看得到（因為含金額）。回<a href="#person">我的頁面</a>。</p>';
       return;
     }
     if(page==='person'&&ROLE.person_id&&arg&&arg!==ROLE.person_id){arg=ROLE.person_id;history.replaceState(null,'','#person/'+arg)}
@@ -1877,9 +1913,9 @@ function route(){
   }
   const navPg=page==='project'?'projects':page==='line'?'lines':page;
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+navPg));
-  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',projects:'專案總覽',lines:'職務總覽',line:'職務頁',amend:'修約與閘門',compare:'情境比較',scenarios:'提案總覽'};
+  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'單一案子',projects:'所有案子',lines:'所有職位',line:'單一職位',amend:'待辦與死線',compare:'版本比較',scenarios:'版本總覽'};
   document.getElementById('title').textContent=T[page]||'總表';
-  document.getElementById('app').innerHTML=(page==='compare'?'':draftBanner())+
+  document.getElementById('app').innerHTML=(page==='compare'?'':draftBanner())+pageIntro(page)+
     (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='projects'?vProjects()
      :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare(arg)
      :page==='scenarios'?vScenarios():vMaster());
@@ -1897,10 +1933,13 @@ document.getElementById('maskBtn').onclick=()=>{
   route();
 };
 if(MASK)document.getElementById('maskBtn').textContent='🙈 金額';
+window.showCheat=()=>document.getElementById('cheatDlg').showModal();
+function maybeCheat(){if(!localStorage.getItem('cr_cheat'))setTimeout(()=>{try{document.getElementById('cheatDlg').showModal()}catch(e){}},600)}
 window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);const el=document.getElementById('theme');if(el&&el.value!==v)el.value=v;
   document.documentElement.dataset.theme=(v==='base-auto')?(matchMedia('(prefers-color-scheme: dark)').matches?'base-dark':'base-light'):v};
 document.getElementById('theme').value=window.__themePref||'base-auto';
 addEventListener('hashchange',route);
+setTimeout(()=>{if(typeof DB!=='undefined'&&DB)maybeCheat()},1200);
 // ---------- boot ----------
 loadSes();
 const fresh=parseHashTokens();
