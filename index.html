@@ -896,6 +896,37 @@ function runwayOf(scnId){
   return{mk,mkM,pts,low,dead,monthsTo,months:pts.length-1}}
 function rwLabel(r){if(!r)return '—';
   return r.dead?`≈${r.monthsTo} 個月（至 ${ML[r.dead]||r.dead}）`:`＞${r.months} 個月（計劃視窗內未見底）`}
+// B20b：無基準時的預設模式——累計存金投入（H1 交換後基數＋逐月累加實列月合計）
+function cumOf(scnId){
+  const ser=internalSeries(scnId);
+  const h1=+((DB.settings.headline||{}).h1_internal_after_swap)||0;
+  let bal=h1;const pts=[{m:'H1',bal,burn:0}];let steep={m:null,burn:0};
+  M.forEach(m=>{const b=ser[m]||0;bal+=b;pts.push({m,bal,burn:b});if(b>steep.burn)steep={m,burn:b}});
+  const at=mm=>{const p=pts.filter(x=>x.m!=='H1'&&x.m<=mm);return p.length?p[p.length-1].bal:h1};
+  return{h1,pts,steep,to2026:at('202612'),to2701:at('202701'),toEnd:bal,endM:M[M.length-1]}}
+function cumSVG(c,w,h,big,c2,names){ // c2＝疊圖第二條（比較頁用）
+  const pad=big?{l:56,r:14,t:14,b:22}:{l:2,r:2,t:3,b:3};
+  const iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  const all=[...c.pts.map(p=>p.bal),...(c2?c2.pts.map(p=>p.bal):[])];
+  const ymax=Math.max(...all)||1;
+  const X=i=>pad.l+iw*i/(c.pts.length-1);
+  const Y=v=>pad.t+ih*(1-v/ymax);
+  const path=pp=>pp.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.bal).toFixed(1)}`).join('');
+  let s=`<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%">`;
+  if(big){for(let g=1;g<=3;g++){const v=ymax*g/4;
+    s+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width=".5"/>
+        <text x="${pad.l-6}" y="${Y(v)+4}" text-anchor="end" font-size="10" fill="var(--ink3)">${k(v)}</text>`}
+    const step=Math.max(1,Math.ceil(c.pts.length/9));
+    c.pts.forEach((p,i)=>{if(i===0||i%step===0||i===c.pts.length-1)
+      s+=`<text x="${X(i)}" y="${h-6}" text-anchor="middle" font-size="10" fill="var(--ink3)">${p.m==='H1'?'H1':(ML[p.m]||p.m)}</text>`});
+    if(c.steep.m){const i=c.pts.findIndex(p=>p.m===c.steep.m);
+      s+=`<circle cx="${X(i)}" cy="${Y(c.pts[i].bal)}" r="4" fill="var(--warn)"/>
+          <text x="${X(i)}" y="${Y(c.pts[i].bal)-8}" text-anchor="middle" font-size="10.5" fill="var(--warn)">最陡 ${ML[c.steep.m]||c.steep.m} ＋${k(c.steep.burn)}${c.steep.m==='202612'?'（年終攤提）':''}</text>`}}
+  if(c2)s+=`<path d="${path(c2.pts)}" fill="none" stroke="var(--good)" stroke-width="2" stroke-dasharray="5 3"/>`;
+  s+=`<path d="${path(c.pts)}" fill="none" stroke="var(--crit)" stroke-width="${big?2:1.5}"/>`;
+  if(big&&c2&&names)s+=`<g font-size="11"><rect x="${pad.l+8}" y="${pad.t+4}" width="10" height="3" fill="var(--crit)"/><text x="${pad.l+22}" y="${pad.t+9}" fill="var(--ink2)">${esc(names[0])}</text>
+    <rect x="${pad.l+8}" y="${pad.t+18}" width="10" height="3" fill="var(--good)"/><text x="${pad.l+22}" y="${pad.t+23}" fill="var(--ink2)">${esc(names[1])}</text></g>`;
+  return s+'</svg>'}
 function rwSVG(r,w,h,big){
   if(!r||r.pts.length<2)return '';
   const pad=big?{l:52,r:14,t:14,b:22}:{l:2,r:2,t:3,b:3};
@@ -935,7 +966,10 @@ window.openRunway=()=>{
       <p class="note">水位＝基準逐月減「月合計（帳面，實列）」；暫定人力另計不入線。▼＝收款標記（綠＝已到帳、黃＝預計）——grant 款限定用途不加入存金，只影響墊款。基準日當月視為已反映，次月起扣。</p>
       <h3 style="margin:10px 0 4px">基準歷史（append-only）</h3>
       <div class="tblwrap"><table><thead><tr><th>基準日</th><th>存金</th><th>備註</th><th>登記者</th></tr></thead><tbody>${hist}</tbody></table></div>`
-    :'<p class="banner">尚未設定存金基準——按下方「✎ 更新存金基準」輸入（例：月結後的存金餘額）。</p>';
+    :(()=>{const c=cumOf(ACTIVE);
+      return `<p class="note" style="margin:0 0 6px">情境：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜<b>累計存金投入</b>＝H1（交換後）${k(c.h1)} ＋ 8月起逐月累加「月合計（帳面，實列）」｜至 2027/1 <b>≈${wan(c.to2701)}</b>｜至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}</p>
+      ${cumSVG(c,760,280,true)}
+      <p class="note">曲線上升＝虧損累積；最陡段＝單月投入最高（12月＝年終攤提）。<b>7月未結帳未含</b>。暫定人力另計不入線。設定存金基準後本卡自動切換為「水位模式」（顯示見底月）。</p>`})();
   dlg.showModal()};
 window.frmMark=()=>{document.getElementById('rwDlg').close();
   openForm('更新存金基準（新增一筆，歷史全留）',[
@@ -1002,7 +1036,8 @@ function vMaster(){
      const rw=runwayOf(ACTIVE);
      const rwCard=rw
        ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開存金水位圖"><div class="l">Runway（存金壽命）</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
-       :`<div class="card click" onclick="openRunway()"><div class="l">Runway（存金壽命）</div><div class="v num" style="font-size:17px">未設定基準</div><div class="s">點此設定存金基準後啟用水位圖</div></div>`;
+       :(()=>{const c=cumOf(ACTIVE);
+         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l">累計存金投入（H1 交換後＋計劃）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月未結帳未含</b></div>${cumSVG(c,210,34,false)}</div>`})();
      return c1+rwCard+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
@@ -1576,12 +1611,21 @@ function vCompare(cmpId){
       <tr><td><b>帳面合計</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
     <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
-    ${(()=>{const ro=runwayOf(baseId),rd2=runwayOf(targetId);if(!ro||!rd2)return '';
-      const n=r=>r.dead?r.monthsTo:r.months; // 未見底＝以視窗長度計（下限）
-      const d=n(rd2)-n(ro);
-      const dTxt=d>0?`<span style="color:var(--good)">▲多活 ${d} 個月${!rd2.dead||!ro.dead?'（下限）':''}</span>`:d<0?`<span style="color:var(--crit)">▼少活 ${-d} 個月</span>`:'—';
-      return `<tr><td>Runway（存金壽命）</td><td class="num">${rwLabel(ro)}</td><td class="num">${rwLabel(rd2)}</td><td class="num">${dTxt}</td></tr>`})()}
+    ${(()=>{const ro=runwayOf(baseId),rd2=runwayOf(targetId);
+      if(ro&&rd2){
+        const n=r=>r.dead?r.monthsTo:r.months; // 未見底＝以視窗長度計（下限）
+        const d=n(rd2)-n(ro);
+        const dTxt=d>0?`<span style="color:var(--good)">▲多活 ${d} 個月${!rd2.dead||!ro.dead?'（下限）':''}</span>`:d<0?`<span style="color:var(--crit)">▼少活 ${-d} 個月</span>`:'—';
+        return `<tr><td>Runway（存金壽命）</td><td class="num">${rwLabel(ro)}</td><td class="num">${rwLabel(rd2)}</td><td class="num">${dTxt}</td></tr>`}
+      const co=cumOf(baseId),cd=cumOf(targetId);
+      const d=cd.toEnd-co.toEnd;
+      const dTxt=d<-500?`<span style="color:var(--good)">▼省 ${k(-d)}</span>`:d>500?`<span style="color:var(--crit)">▲多虧 ${k(d)}</span>`:'—';
+      return `<tr><td>累計存金投入（含 H1，至 ${ML[co.endM]||co.endM}）</td><td class="num">${k(co.toEnd)}</td><td class="num">${k(cd.toEnd)}</td><td class="num">${dTxt}</td></tr>`})()}
   </tbody></table></div>`;
+  if(!latestMark()){ // B20b：無基準時附兩條累計曲線疊圖
+    const co=cumOf(baseId),cd=cumOf(targetId);
+    h+=`<div style="margin:6px 0 12px">${cumSVG(co,760,240,true,cd,[baseHead+'（累計存金投入）',targetHead])}
+    <p class="note" style="margin:2px 0 0">兩條累計曲線（含 H1 基數 ${k(co.h1)}；7月未結帳未含）——縱向差距＝兩方案到該月為止的累計虧損差。</p></div>`}
   const sd=staffDiff(baseId,targetId);
   if(sd.length){
     h+=`<h2>用人差異（${sd.length} 人）</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>差異（${baseHead} → ${targetHead}）</th></tr></thead><tbody>`;
