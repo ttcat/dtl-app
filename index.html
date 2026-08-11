@@ -242,6 +242,9 @@ window.frmScn=()=>openForm('開新情境（複製正式版）',[
   const strows=(DB.staffing||[]).filter(r=>r.scenario_id===OFFICIAL)
     .map(r=>({scenario_id:id,person_id:r.person_id,month:r.month,cost:r.cost,capacity:r.capacity}));
   for(let i=0;i<strows.length;i+=200)await dbIns('staffing',strows.slice(i,i+200));
+  const exrows=EXP.filter(e=>e.scenario_id===OFFICIAL)
+    .map(e=>({scenario_id:id,month:e.month,category:e.category,item:e.item,payer:e.payer,amount_twd:e.amount_twd,note:e.note}));
+  for(let i=0;i<exrows.length;i+=200)await dbIns('expense_plan',exrows.slice(i,i+200));
   localStorage.setItem('cr_scn',id);
   await reload('已開新情境「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
 });
@@ -414,7 +417,13 @@ window.rejectProposal=id=>openForm('退回提案 #'+id,[{id:'note',label:'退回
 });
 
 // ---- B10: 情境化用人表（staffing）——薪資/容量一律由 ACTIVE 情境讀 ----
-let STAFF={},CTXSCN=null; // CTXSCN：scnMetrics 臨時切換情境用
+let STAFF={},CTXSCN=null,EXP=[]; // CTXSCN：scnMetrics 臨時切換情境用
+function expInt(scnId,m){ // B11: 該情境該月的 internal 福利/非人事（派生＋支出計劃）
+  let ben=0,np=0;
+  EXP.forEach(e=>{if(e.scenario_id!==scnId||e.payer!=='internal'||e.month!==m)return;
+    if(e.category==='benefits')ben+=+e.amount_twd;else np+=+e.amount_twd});
+  return{ben,np};
+}
 const stRow=(pid,m)=>STAFF[(CTXSCN||ACTIVE)+'|'+pid+'|'+m];
 function costOf(pid,m){const r=stRow(pid,m);return r?+r.cost||0:0}
 function capOf(pid,m){
@@ -608,6 +617,7 @@ async function loadAll(){
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
       qAll('staffing?select=*&order=month'),q('scenario_versions?select=*')]);
+    try{EXP=await qAll('expense_plan?select=*&order=id')}catch(e){EXP=[]}
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     SNOTES={};
@@ -725,13 +735,25 @@ function vMaster(){
     h+='</tr>';
   });
   if(fund){
-    h+=`<tr class="introw"><td><b>每月存金合計（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+    h+=`<tr class="introw"><td><b>薪資存金（實）</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
     if(M.some(m=>provMonth[m]>500))
       h+=`<tr class="introw" style="opacity:.75"><td><b style="font-weight:600">暫定人力存金（另計）</b></td>${M.map(m=>`<td><span class="cell num uP">${provMonth[m]>500?k(provMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+    const eB={},eN={};M.forEach(m=>{const e=expInt(ACTIVE,m);eB[m]=e.ben;eN[m]=e.np});
+    if(M.some(m=>eB[m]>500))
+      h+=`<tr class="introw"><td><b style="font-weight:600">福利存金（模型派生）</b></td>${M.map(m=>`<td><span class="cell num">${eB[m]>500?k(eB[m]):'0'}</span></td>`).join('')}</tr>`;
+    if(M.some(m=>eN[m]>500))
+      h+=`<tr class="introw"><td><b style="font-weight:600">非人事存金（支出計劃）</b></td>${M.map(m=>`<td><span class="cell num">${eN[m]>500?k(eN[m]):'0'}</span></td>`).join('')}</tr>`;
+    const tot={};let grand=0;M.forEach(m=>{tot[m]=intMonth[m]+eB[m]+eN[m];grand+=tot[m]});
+    h+=`<tr class="introw" style="border-top:2px solid var(--crit)"><td><b>月合計（帳面）</b></td>${M.map(m=>`<td><span class="cell num" style="font-weight:700">${tot[m]>500?k(tot[m]):'0'}</span></td>`).join('')}</tr>`;
+    var fundGrand=grand; // 供下方對帳註記
   }
   h+='</tbody></table></div>';
   h+=fund
-    ?'<p class="note">資金視圖：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。</p>'
+    ?`<p class="note">資金視圖：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&+hd.aug_jan_internal))return '';
+      const AJ=M.filter(m=>m>='202608'&&m<='202701');
+      const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
+      const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
+      return `<br>🔗 <b>對帳鏈（Aug–1月）</b>：薪資實 ＋ 暫定另計 ＋ 福利 ＋ 非人事 ＝ ${money(chain.toLocaleString('zh-TW'))} ↔ KPI 帳面 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
     :'<p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
   h+=farNote();
   return h;
@@ -1111,7 +1133,11 @@ function vCompare(){
   <p class="note" style="margin:0 0 10px">帳面口徑：📌 ${hl(SCNS.find(s=>s.id===OFFICIAL))}　｜　${ai?'🤖':'🧪'} ${hl(scn)}</p>
   ${scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}`;
   h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>正式版</th><th>草稿</th><th>差異</th></tr></thead><tbody>
-    <tr><td>存金合計（實，全時間軸）</td><td class="num">${k(mo.internal)||'0'}</td><td class="num">${k(md.internal)||'0'}</td><td class="num">${dTag(md.internal-mo.internal)}</td></tr>
+    <tr><td>存金合計（薪資實，全時間軸）</td><td class="num">${k(mo.internal)||'0'}</td><td class="num">${k(md.internal)||'0'}</td><td class="num">${dTag(md.internal-mo.internal)}</td></tr>
+    ${(()=>{const eo=M.reduce((s,m)=>{const e=expInt(OFFICIAL,m);return s+e.ben+e.np},0);
+      const ed=M.reduce((s,m)=>{const e=expInt(ACTIVE,m);return s+e.ben+e.np},0);
+      return `<tr><td>福利＋非人事（存金）</td><td class="num">${k(eo)||'0'}</td><td class="num">${k(ed)||'0'}</td><td class="num">${dTag(ed-eo)}</td></tr>
+      <tr><td><b>帳面合計</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
     <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
   </tbody></table></div>`;
