@@ -37,6 +37,9 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
 .u100{background:color-mix(in oklab,var(--fN) 26%,transparent)} .u60{background:color-mix(in oklab,var(--fN) 14%,transparent)}
 .u0{background:color-mix(in oklab,var(--crit) 18%,transparent);color:var(--crit);font-weight:600}
 .uP{outline:1.5px dashed var(--fP);outline-offset:-1.5px}
+.uOver{background:color-mix(in oklab,var(--crit) 30%,transparent);color:var(--crit);font-weight:700;outline:1.5px solid var(--crit);outline-offset:-1.5px}
+#edErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
 .uEdit{cursor:pointer} .uEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
 .pend{outline:1.5px dashed var(--warn);outline-offset:-1.5px;position:relative}
 .pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;border:1px solid var(--line)}
@@ -111,6 +114,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div class="row"><span>提案人</span><input type="text" id="edAuthor" placeholder="你的名字" style="width:150px"></div>
   <div class="row"><span>備註</span><input type="text" id="edNote" placeholder="選填" style="width:150px"></div>
   <p class="note" style="margin:6px 0 0">送出後為「待套用」提案（虛線標示），由財務/CEO 核可後寫入正式資料。</p>
+  <div id="edErr"></div>
   <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出提案</button></div>
 </dialog>
 
@@ -261,8 +265,9 @@ function vMaster(){
       const{used,cap,rows}=loeOf(p.id,m);
       const prov=rows.some(a=>a.provisional);
       const hasPend=rows.some(a=>pending[[p.id,m,a.project_id].join('|')]);
-      const cls=used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''}" title="${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
+      const over=used>cap+0.5;
+      const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -280,7 +285,7 @@ function mySummary(pid){
       .sort((a,b)=>b.avg-a.avg);
   };
   const h1=seg(M.slice(0,6)),h2=seg(M.slice(6));
-  const fmt=list=>list?list.map(x=>`<b style="color:var(${PC[x.pr]||'--ink'})">${SHORT[x.pr]||x.pr} ${x.avg}%</b>${prmap[x.pr]&&prmap[x.pr].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋'):'（無配置）';
+  const fmt=list=>list?list.map(x=>`<b style="color:var(${PC[x.pr]||'--ink'})">${SHORT[x.pr]||(prmap[x.pr]&&prmap[x.pr].name)||x.pr} ${x.avg}%</b>${prmap[x.pr]&&prmap[x.pr].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋'):'（無配置）';
   let extra='';
   if(W.some(a=>a.person_id===pid&&a.project_id==='se'&&a.month==='202612'))
     extra='<br><span style="color:var(--ink2)">12月：AIT(SE) 於 12/14 結案，該月按 12/1–14 與 12/15–31 分段計。</span>';
@@ -392,34 +397,46 @@ function vAmend(){
 
 // ---- proposal dialog ----
 let edCtx=null;
+function edError(msg){const e=document.getElementById('edErr');
+  if(msg){e.textContent=msg;e.style.display='block'}else{e.textContent='';e.style.display='none'}
+  document.getElementById('edSave').disabled=!!msg;}
 window.openEdit=(pid,m,pr)=>{
   const p=pmap[pid];const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
-  edCtx={pid,m,pr,sal:(p.monthly_cost||{})[m]||0,cap:p.capacity_default};
-  document.getElementById('edTitle').textContent=`提案：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||pr}`;
   const cur=a&&a.loe_pct!=null?Math.round(+a.loe_pct):0;
-  document.getElementById('edLoe').value=cur;updAmt();
+  const othersLoe=Math.max(0,loeOf(pid,m).used-cur);
+  edCtx={pid,m,pr,sal:(p.monthly_cost||{})[m]||0,cap:p.capacity_default,othersLoe};
+  document.getElementById('edTitle').textContent=`提案：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||(prmap[pr]&&prmap[pr].name)||pr}`;
+  document.getElementById('edLoe').value=cur;
   document.getElementById('edAuthor').value=localStorage.getItem('cr_author')||'';
   document.getElementById('edNote').value='';
+  edError(null);updAmt();
   document.getElementById('editDlg').showModal();
 };
 function updAmt(){if(!edCtx)return;const l=+document.getElementById('edLoe').value||0;
-  document.getElementById('edAmt').textContent=k(edCtx.sal/edCtx.cap*l)}
+  document.getElementById('edAmt').textContent=k(edCtx.sal/edCtx.cap*l);
+  const total=edCtx.othersLoe+l;
+  if(l<0)edError('LOE 不可為負數');
+  else if(total>edCtx.cap+0.5)edError(`此月合計將達 ${Math.round(total)}%，超過容量上限 ${edCtx.cap}%`);
+  else edError(null);}
 document.getElementById('edLoe').addEventListener('input',updAmt);
 document.getElementById('edCancel').onclick=()=>document.getElementById('editDlg').close();
 document.getElementById('edSave').onclick=async()=>{
   const l=+document.getElementById('edLoe').value;
   const author=document.getElementById('edAuthor').value.trim();
-  if(!author){alert('請填提案人名字');return}
-  if(l<0||l>edCtx.cap){alert('超過容量上限 '+edCtx.cap+'%');return}
+  if(!author){edError('請填提案人名字');return}
+  const total=edCtx.othersLoe+l;
+  if(l<0||total>edCtx.cap+0.5){updAmt();return}
   localStorage.setItem('cr_author',author);
   const body={author,target_table:'allocations',action:'update',
     target_pk:{person_id:edCtx.pid,month:edCtx.m,project_id:edCtx.pr},
     payload:{loe_pct:l,amount_twd:Math.round(edCtx.sal/edCtx.cap*l)},
     note:document.getElementById('edNote').value.trim()||null};
-  const r=await authFetch(SB+'/rest/v1/edit_proposals',{method:'POST',
-    headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)});
+  let r;
+  try{r=await authFetch(SB+'/rest/v1/edit_proposals',{method:'POST',
+    headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)});}
+  catch(e){edError('送出失敗：'+e.message);return}
+  if(!r.ok){edError('送出失敗（'+r.status+'），請稍後再試');return}
   document.getElementById('editDlg').close();
-  if(!r.ok){alert('送出失敗 '+r.status);return}
   await reload('提案已送出');
 };
 
