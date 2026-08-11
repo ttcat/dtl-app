@@ -258,8 +258,9 @@ window.archiveScn=()=>openForm('封存這個草稿？（資料保留、可回看
 });
 // ---------- admin write helpers & generic form ----------
 async function dbIns(table,obj,extra){
+  const upsert=table.includes('on_conflict')||!!extra; // on_conflict 一律帶 merge，否則同鍵重寫 409
   const r=await authFetch(SB+'/rest/v1/'+table+(extra||''),{method:'POST',
-    headers:{'Content-Type':'application/json',Prefer:'return=minimal'+(extra?',resolution=merge-duplicates':'')},
+    headers:{'Content-Type':'application/json',Prefer:'return=minimal'+(upsert?',resolution=merge-duplicates':'')},
     body:JSON.stringify(obj)});
   if(!r.ok)throw new Error(table+' 寫入失敗 '+r.status);
 }
