@@ -43,7 +43,10 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
 .introw td{border-top:2px solid var(--line);color:var(--crit);font-weight:600}
-#edErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
+#edErr,#fdErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
+.capEdit{cursor:pointer}.capEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
+.miniact{border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:5px;padding:2px 8px;font-size:11.5px;cursor:pointer;margin-right:4px}
+.miniact.ok{color:var(--good);border-color:var(--good)}.miniact.no{color:var(--crit);border-color:var(--crit)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .uEdit{cursor:pointer} .uEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
 .pend{outline:1.5px dashed var(--warn);outline-offset:-1.5px;position:relative}
@@ -124,6 +127,12 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出提案</button></div>
 </dialog>
 
+<dialog id="formDlg">
+  <h3 id="fdTitle"></h3>
+  <div id="fdBody"></div>
+  <div id="fdErr"></div>
+  <div class="acts"><button class="btn" id="fdCancel">取消</button><button class="btn primary" id="fdSave">儲存</button></div>
+</dialog>
 <script>
 const SB='https://wunwsxapbksqrfthseqz.supabase.co';
 const KEY='sb_publishable_ekm9TwJ7pfZi3OjClaHT8Q_qyJGcPeA';
@@ -142,6 +151,149 @@ const usd=v=>money('US$'+(+v).toLocaleString('en',{maximumFractionDigits:0}));
 let DB=null,pmap={},prmap={},W=[],pending={};
 let VIEW=localStorage.getItem('cr_view')||'load';
 window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
+// ---------- admin write helpers & generic form ----------
+async function dbIns(table,obj,extra){
+  const r=await authFetch(SB+'/rest/v1/'+table+(extra||''),{method:'POST',
+    headers:{'Content-Type':'application/json',Prefer:'return=minimal'+(extra?',resolution=merge-duplicates':'')},
+    body:JSON.stringify(obj)});
+  if(!r.ok)throw new Error(table+' 寫入失敗 '+r.status);
+}
+async function dbUpd(table,filter,obj){
+  const r=await authFetch(SB+'/rest/v1/'+table+'?'+filter,{method:'PATCH',
+    headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(obj)});
+  if(!r.ok)throw new Error(table+' 更新失敗 '+r.status);
+}
+let FD=null;
+function openForm(title,fields,onsave){
+  FD={fields,onsave};
+  document.getElementById('fdTitle').textContent=title;
+  document.getElementById('fdBody').innerHTML=fields.map(f=>{
+    if(f.type==='select')return `<div class="row"><span>${f.label}</span><select id="fd_${f.id}" style="width:172px">${f.options.map(o=>`<option value="${o[0]}" ${String(o[0])===String(f.value)?'selected':''}>${o[1]}</option>`).join('')}</select></div>`;
+    return `<div class="row"><span>${f.label}</span><input id="fd_${f.id}" type="${f.type||'text'}" value="${f.value??''}" placeholder="${f.placeholder||''}" style="width:172px"></div>`;
+  }).join('');
+  const e=document.getElementById('fdErr');e.textContent='';e.style.display='none';
+  document.getElementById('fdSave').disabled=false;
+  document.getElementById('formDlg').showModal();
+}
+function fdError(m){const e=document.getElementById('fdErr');e.textContent=m;e.style.display='block'}
+document.getElementById('fdCancel').onclick=()=>document.getElementById('formDlg').close();
+document.getElementById('fdSave').onclick=async()=>{
+  const vals={};FD.fields.forEach(f=>vals[f.id]=document.getElementById('fd_'+f.id).value.trim());
+  document.getElementById('fdSave').disabled=true;
+  try{await FD.onsave(vals);document.getElementById('formDlg').close();}
+  catch(e){fdError(e.message);document.getElementById('fdSave').disabled=false}
+};
+const slug=s=>(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||('x'+Math.floor(Math.random()*1e5));
+const mKeys=M;
+function monthInputToKey(v){return v?v.replace('-',''):''} // '2026-11'→'202611'
+
+window.frmPerson=()=>openForm('新增同事',[
+  {id:'name',label:'姓名*'},{id:'alias',label:'別名'},
+  {id:'type',label:'身分',type:'select',value:'employee',options:[['employee','員工'],['hourly','時薪'],['contractor','顧問']]},
+  {id:'team',label:'團隊'},{id:'join',label:'到職月',type:'month',value:'2026-09'},
+  {id:'cost',label:'月成本(時薪×時數)',type:'number'},{id:'cap',label:'容量上限%',type:'number',value:100},
+],async v=>{
+  if(!v.name)throw new Error('姓名必填');
+  const jm=monthInputToKey(v.join);if(!jm)throw new Error('到職月必填');
+  const cost=+v.cost||0;const id=slug(v.alias||v.name)+'_'+Math.floor(Math.random()*900+100);
+  const mc={};mKeys.forEach(m=>mc[m]=m>=jm?cost:0);
+  await dbIns('people',{id,name:v.name,alias:v.alias||v.name,type:v.type,
+    capacity_default:+v.cap||100,benefits_eligible:v.type!=='contractor',
+    monthly_cost:mc,team:v.team||null,provisional:false,note:'B3 表單新增'});
+  await dbIns('contract_events',{person_id:id,date:v.join+'-01',type:'hire',note:'到職（表單）'});
+  await reload('已新增 '+v.name);
+});
+
+window.frmProject=()=>openForm('新增專案',[
+  {id:'name',label:'名稱*'},{id:'donor',label:'Donor'},
+  {id:'status',label:'狀態',type:'select',value:'pipeline',options:[['active','active'],['pipeline','pipeline(暫定)']]},
+  {id:'currency',label:'幣別',type:'select',value:'TWD',options:[['TWD','TWD'],['USD','USD'],['EUR','EUR']]},
+  {id:'fx',label:'匯率(對TWD)',type:'number',value:31.5},
+  {id:'total',label:'核准總額(原幣,可空)',type:'number'},
+  {id:'start',label:'起月',type:'month',value:'2027-02'},{id:'end',label:'迄月',type:'month',value:'2028-01'},
+  {id:'conf',label:'信心度0-1(pipeline)',type:'number',value:0.5},
+],async v=>{
+  if(!v.name||!v.start||!v.end)throw new Error('名稱與期間必填');
+  const id=slug(v.name)+'_'+Math.floor(Math.random()*900+100);
+  const endD=new Date(+v.end.slice(0,5),+v.end.slice(5,7),0).getDate();
+  await dbIns('projects',{id,name:v.name,donor:v.donor||'TBD',status:v.status,
+    currency:v.currency,fx:+v.fx||null,period:`[${v.start}-01,${v.end}-${endD}]`,
+    provisional:v.status==='pipeline',confidence:+v.conf||null,note:'B3 表單新增'});
+  if(+v.total>0)await dbIns('budget_lines',{id:id+'_total',project_id:id,category:'Total',
+    name:'核准總額',remaining_orig:+v.total,currency:v.currency,provisional:v.status==='pipeline'});
+  await reload('已新增專案 '+v.name);
+});
+
+window.frmLine=pr=>openForm('新增職位線（'+((prmap[pr]||{}).name||pr)+'）',[
+  {id:'name',label:'線名*'},{id:'budget',label:'預算(原幣)*',type:'number'},{id:'note',label:'備註'},
+],async v=>{
+  if(!v.name||!(+v.budget>0))throw new Error('線名與預算必填');
+  await dbIns('budget_lines',{id:pr+'_'+slug(v.name)+'_'+Math.floor(Math.random()*900+100),project_id:pr,
+    category:'Personnel',name:v.name,remaining_orig:+v.budget,
+    currency:(prmap[pr]||{}).currency||'TWD',note:v.note||null,provisional:(prmap[pr]||{}).provisional||false});
+  await reload('已新增職位線');
+});
+
+window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].name),[
+  {id:'from',label:'自哪個月起',type:'select',value:m,options:M.map(x=>[x,ML[x]])},
+  {id:'cap',label:'新容量%',type:'number',value:capOf(pid,m)},
+],async v=>{
+  const c=+v.cap;if(!(c>=0&&c<=100))throw new Error('容量 0–100');
+  const rows=M.filter(x=>x>=v.from).map(x=>({person_id:pid,month:x,capacity:c,reason:'B3 表單調整'}));
+  await dbIns('capacity_overrides?on_conflict=person_id,month',rows,'');
+  await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'capacity_change',note:'容量調整為 '+c+'%（'+ML[v.from]+' 起）'});
+  await reload('容量已更新');
+});
+
+window.frmDate=(pid,kind)=>openForm((kind==='departure'?'設定離職日：':'設定到職日：')+(pmap[pid].alias||pmap[pid].name),[
+  {id:'date',label:'日期',type:'date'},{id:'note',label:'備註'},
+],async v=>{
+  if(!v.date)throw new Error('日期必填');
+  const em=v.date.slice(0,7).replace('-','');const d=+v.date.slice(8,10);
+  const dim=new Date(+v.date.slice(0,4),+v.date.slice(5,7),0).getDate();
+  const p=pmap[pid];const mc={...(p.monthly_cost||{})};
+  const base=mc[em]||Object.values(mc).find(x=>x>0)||0;
+  M.forEach(mm=>{
+    if(kind==='departure'){if(mm>em)mc[mm]=0;else if(mm===em)mc[mm]=Math.round(base*d/dim)}
+    else{if(mm<em)mc[mm]=0;else if(mm===em)mc[mm]=Math.round(base*(dim-d+1)/dim)}
+  });
+  await dbUpd('people','id=eq.'+pid,{monthly_cost:mc});
+  await dbIns('contract_events',{person_id:pid,date:v.date,type:kind,
+    note:(kind==='departure'?'離職':'到職')+'（表單設定，'+(v.note||'按日比例')+'）'});
+  await reload('已設定'+(kind==='departure'?'離職日':'到職日'));
+});
+
+window.applyProposal=async id=>{
+  const x=DB.proposals.find(p=>p.id===id);if(!x)return;
+  const t=x.target_pk||{};const p=pmap[t.person_id];
+  const l=+((x.payload||{}).loe_pct??0);
+  const sal=(p&&p.monthly_cost||{})[t.month]||0;const cap=capOf(t.person_id,t.month)||100;
+  const amount=(x.payload&&x.payload.amount_twd!=null)?+x.payload.amount_twd:Math.round(sal/cap*l);
+  const exist=W.find(a=>a.person_id===t.person_id&&a.month===t.month&&a.project_id===t.project_id);
+  if(exist)await dbUpd('allocations',
+    `person_id=eq.${t.person_id}&month=eq.${t.month}&project_id=eq.${t.project_id}&layer=eq.working`,
+    {loe_pct:l,amount_twd:amount});
+  else await dbIns('allocations',{person_id:t.person_id,month:t.month,project_id:t.project_id,
+    loe_pct:l,amount_twd:amount,layer:'working',provisional:(prmap[t.project_id]||{}).provisional||false});
+  await dbUpd('edit_proposals','id=eq.'+id,{status:'applied'});
+  await reload('已套用提案 #'+id);
+};
+window.rejectProposal=id=>openForm('退回提案 #'+id,[{id:'note',label:'退回理由'}],async v=>{
+  await dbUpd('edit_proposals','id=eq.'+id,{status:'rejected',note:v.note||'退回'});
+  await reload('已退回提案 #'+id);
+});
+
+function capOf(pid,m){
+  const o=DB&&DB.capov&&DB.capov[pid+'|'+m];
+  return o!=null?o:(pmap[pid]?pmap[pid].capacity_default:100);
+}
+function zeroNote(pid,m){ // '—' 格的事件註記
+  const evs=(DB.contract_events||[]).filter(e=>e.person_id===pid&&(e.type==='departure'||e.type==='hire'||e.type==='hire_planned'));
+  for(const e of evs){const em=(e.date||'').slice(0,7).replace('-','');
+    if(e.type==='departure'&&m>em)return '已於 '+e.date+' 離職';
+    if(e.type!=='departure'&&m<em)return '預計 '+e.date+' 到職';}
+  return '';
+}
 function fundOf(pid,m){ // admin-only: payer composition for one person-month
   const p=pmap[pid];const rows=personMonth(pid,m);
   const sal=(p.monthly_cost||{})[m]||0;
@@ -264,27 +416,31 @@ async function enterApp(){
 async function q(path){const r=await authFetch(SB+'/rest/v1/'+path);if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
 async function loadAll(){
   let people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals;
+  let capov=[];
   if(isAdmin()){
-    [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals]=await Promise.all([
+    [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals,capov]=await Promise.all([
       q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
       q('allocations?select=*&limit=2000'),q('amendment_items?select=*&order=id'),
       q('decisions?select=*&order=id'),q('gates?select=*&order=id'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
-      q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200')]);
+      q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
+      q('capacity_overrides?select=*')]);
   }else{
     // member: 無金額視圖；不取任何含金額的表
     let props=[];
-    [people,allocations,projects,deliverables,contract_events,props]=await Promise.all([
+    [people,allocations,projects,deliverables,contract_events,props,capov]=await Promise.all([
       q('people_public?select=*&order=id'),q('allocations_public?select=*&limit=3000'),
       q('projects?select=id,name,status,provisional,confidence'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
-      q('edit_proposals_public?select=*&order=id.desc&limit=100')]);
+      q('edit_proposals_public?select=*&order=id.desc&limit=100'),
+      q('capacity_overrides?select=*')]);
     proposals=props;
     budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
     people.forEach(p=>{if(!p.monthly_cost)p.monthly_cost={}});
   }
   const settings={};settingsRows.forEach(r=>settings[r.key]=(r.value&&'v' in r.value&&Object.keys(r.value).length===1)?r.value.v:r.value);
-  DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals};
+  const capovMap={};capov.forEach(c=>capovMap[c.person_id+'|'+c.month]=+c.capacity);
+  DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals,capov:capovMap};
   pmap=Object.fromEntries(people.map(p=>[p.id,p]));
   prmap=Object.fromEntries(projects.map(p=>[p.id,p]));
   W=allocations.filter(a=>a.layer==='working');
@@ -294,7 +450,7 @@ async function loadAll(){
 }
 function personMonth(pid,m){return W.filter(a=>a.person_id===pid&&a.month===m)}
 function loeOf(pid,m){const p=pmap[pid];const rows=personMonth(pid,m);
-  const sal=(p.monthly_cost||{})[m]||0;const cap=p.capacity_default;
+  const sal=(p.monthly_cost||{})[m]||0;const cap=capOf(pid,m);
   const used=rows.reduce((s,a)=>s+(a.loe_pct!=null?+a.loe_pct:(sal?a.amount_twd/sal*cap:0)),0);
   const active=sal>0||rows.length>0;
   return{used,cap,rows,sal,active}}
@@ -323,7 +479,7 @@ function vMaster(){
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
-  ${isAdmin()?`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="seg" style="width:220px"><button class="${VIEW==='load'?'on':''}" onclick="setView('load')">負載視圖</button><button class="${VIEW==='fund'?'on':''}" onclick="setView('fund')">資金視圖</button></div></div>`:''}
+  ${isAdmin()?`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><div class="seg" style="width:220px"><button class="${VIEW==='load'?'on':''}" onclick="setView('load')">負載視圖</button><button class="${VIEW==='fund'?'on':''}" onclick="setView('fund')">資金視圖</button></div><button class="hbtn" onclick="frmPerson()">＋新增同事</button></div>`:''}
   ${isAdmin()&&VIEW==='fund'
     ?`<div class="legend"><span><b style="background:color-mix(in oklab,var(--good) 40%,transparent)"></b>全 grant 覆蓋</span><span><b style="background:color-mix(in oklab,var(--warn) 45%,transparent)"></b>部分存金（格內＝存金額）</span><span><b style="background:color-mix(in oklab,var(--crit) 45%,transparent)"></b>全存金/無資金</span><span><b style="border:2px solid var(--crit);background:transparent"></b>有薪無配置（雙重警報）</span></div>`
     :`<div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>`}
@@ -371,23 +527,25 @@ function vMaster(){
 
 function mySummary(pid){
   const p=pmap[pid];
-  const seg=(months)=>{ // describe stable mix over a month list
-    const mix={};let n=0;
-    months.forEach(m=>{const rows=personMonth(pid,m);if(!rows.length)return;n++;
-      rows.forEach(a=>{const key=a.project_id;mix[key]=(mix[key]||0)+(a.loe_pct!=null?+a.loe_pct:0)})});
-    if(!n)return null;
-    return Object.entries(mix).map(([pr,tot])=>({pr,avg:Math.round(tot/n)})).filter(x=>x.avg>0)
-      .sort((a,b)=>b.avg-a.avg);
-  };
-  const h1=seg(M.slice(0,6)),h2=seg(M.slice(6));
-  const fmt=list=>list?list.map(x=>`<b style="color:var(${PC[x.pr]||'--ink'})">${SHORT[x.pr]||(prmap[x.pr]&&prmap[x.pr].name)||x.pr} ${x.avg}%</b>${prmap[x.pr]&&prmap[x.pr].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋'):'（無配置）';
+  const lbl=m=>(+m.slice(0,4))+'/'+(+m.slice(4));
+  const sig=m=>personMonth(pid,m).map(a=>a.project_id+':'+Math.round(a.loe_pct!=null?+a.loe_pct:0)).sort().join(',');
+  // 連續相同組成的月份合併成段；只描述有配置的月份（D5）
+  const runs=[];let cur=null;
+  M.forEach(m=>{const s=sig(m);
+    if(!cur||cur.s!==s){cur={s,start:m,end:m};runs.push(cur)}else cur.end=m});
+  const parts=runs.filter(r=>r.s!=='').map(r=>{
+    const mix=personMonth(pid,r.start).sort((a,b)=>(+b.loe_pct||0)-(+a.loe_pct||0)).map(a=>
+      `<b style="color:var(${PC[a.project_id]||'--ink'})">${SHORT[a.project_id]||(prmap[a.project_id]&&prmap[a.project_id].name)||a.project_id} ${Math.round(a.loe_pct!=null?+a.loe_pct:0)}%</b>${prmap[a.project_id]&&prmap[a.project_id].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋');
+    return `<b>${lbl(r.start)}${r.end!==r.start?'–'+lbl(r.end):''}</b>：${mix}`;
+  });
+  const emptyTail=runs.length&&runs[runs.length-1].s===''?runs[runs.length-1]:null;
+  const tail=emptyTail?`；<b>${lbl(emptyTail.start)} 起</b>：無配置${zeroNote(pid,emptyTail.start)?`（${zeroNote(pid,emptyTail.start)}）`:''}`:'';
   let extra='';
   if(W.some(a=>a.person_id===pid&&a.project_id==='se'&&a.month==='202612'))
     extra='<br><span style="color:var(--ink2)">12月：AIT(SE) 於 12/14 結案，該月按 12/1–14 與 12/15–31 分段計。</span>';
   const pends=Object.values(pending).filter(x=>(x.target_pk||{}).person_id===pid).length;
-  return `<div class="mysum">📋 <b>${p.alias||p.name}</b> 的配置摘要——
-    <b>2026/8–2027/1</b>：${fmt(h1)}；<b>2027/2 起</b>：${fmt(h2)}。
-    每月所有專案加總不超過你的容量上限 ${p.capacity_default}%。虛線＝尚待簽約/核准的暫定安排。${extra}
+  return `<div class="mysum">📋 <b>${p.alias||p.name}</b> 的配置摘要——${parts.join('；')||'（目前無配置）'}${tail}。
+    每月所有專案加總不超過你的容量上限（現行 ${capOf(pid,M[0])}%）。虛線＝尚待簽約/核准的暫定安排。${extra}
     ${pends?`<br><span style="color:var(--warn)">⏳ 你有 ${pends} 筆修改提案等待財務/CEO 套用。</span>`:''}
   </div>`;
 }
@@ -401,6 +559,7 @@ function vPerson(pid){
     <span class="pill num">容量上限 ${p.capacity_default}%</span>
     ${p.provisional?'<span class="prov-badge">暫定人員</span>':''}
     <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
+    ${isAdmin()?`<button class="hbtn" onclick="frmDate('${pid}','hire')">設到職日</button><button class="hbtn" onclick="frmDate('${pid}','departure')">設離職日</button>`:''}
     <span style="font-size:12px;color:var(--ink3)">${p.note||''}</span></div>`;
   h+=mySummary(pid);
   if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
@@ -419,14 +578,20 @@ function vPerson(pid){
     });
     h+='</tr>';
   });
+  h+=`<tr><td><b>容量上限</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
+  M.forEach(m=>{
+    const c=capOf(pid,m);
+    h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="${DB.capov[pid+'|'+m]!=null?'已覆寫（capacity_overrides）':'預設值'}">${c}</span></td>`;
+  });
+  h+='</tr>';
   h+=`<tr><td><b>剩餘容量</b></td>`;
   M.forEach(m=>{
     const{used,cap,active}=loeOf(pid,m);
-    if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+    if(!active){const zn=zeroNote(pid,m);h+=`<td><span class="cell" style="color:var(--ink3)" ${zn?`title="${zn}"`:''}>—</span></td>`;return}
     const free=Math.max(0,Math.round(cap-used));
     h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
   });
-  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）。</p>';
+  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>';
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
   return h;
@@ -437,6 +602,7 @@ function vProject(pr){
   const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（暫定）':''}</option>`).join('')}</select>`;
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
    ${proj.provisional?`<span class="prov-badge">pipeline${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
+   ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增專案</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增職位線</button>`:''}
    <span style="font-size:12px;color:var(--ink3)">${proj.note||''}</span></div>`;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
   if(lines.length){
@@ -469,18 +635,19 @@ function vAmend(){
   let h=`<h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
   DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
   h+=`</tbody></table></div>
-  <h2>待套用提案（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>提案人</th><th>對象</th><th>內容</th><th>狀態</th></tr></thead><tbody>`;
+  <h2>待套用提案（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>提案人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
   const props=DB.proposals.slice(0,50);
-  if(!props.length)h+='<tr><td colspan=6>尚無提案</td></tr>';
+  if(!props.length)h+='<tr><td colspan=7>尚無提案</td></tr>';
   props.forEach(x=>{
     const t=x.target_pk||{};
     const who=pmap[t.person_id]?(pmap[t.person_id].alias||pmap[t.person_id].name):(t.person_id||'');
     h+=`<tr><td class="num">${x.id}</td><td class="num">${(x.created_at||'').slice(0,16).replace('T',' ')}</td><td>${x.author||''}</td>
       <td>${who} ${ML[t.month]||t.month||''} ${SHORT[t.project_id]||t.project_id||''}</td>
       <td class="num">LOE→${x.payload&&x.payload.loe_pct!=null?x.payload.loe_pct+'%':JSON.stringify(x.payload)}${x.note?'｜'+x.note:''}</td>
-      <td><span class="pill ${x.status}">${x.status}</span></td></tr>`;
+      <td><span class="pill ${x.status}">${x.status}</span></td>
+      ${isAdmin()?`<td>${x.status==='pending'?`<button class="miniact ok" onclick="applyProposal(${x.id})">套用</button><button class="miniact no" onclick="rejectProposal(${x.id})">退回</button>`:''}</td>`:''}</tr>`;
   });
-  h+=`</tbody></table></div><p class="note">套用（寫入正式資料）由財務/CEO 透過後端執行；套用後狀態轉 applied。</p>
+  h+=`</tbody></table></div><p class="note">套用＝寫入 working 層配置並轉 applied；退回＝標 rejected 附理由。套用後總表格子由 ⏳ 虛線轉實。</p>
   <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
   ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
   </tbody></table></div>
