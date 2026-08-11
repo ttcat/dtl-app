@@ -198,7 +198,7 @@ const myDrafts=()=>SCNS.filter(s=>s.status==='draft'&&ROLE&&s.owner===ROLE.email
 const isAiOwner=email=>ROLEMAP[email]==='ai';
 const aiDrafts=()=>SCNS.filter(s=>s.status==='draft'&&isAiOwner(s.owner));
 const canEditScn=()=>ACTIVE!==OFFICIAL&&myDrafts().some(s=>s.id===ACTIVE); // AI 草稿對人類唯讀
-window.setScn=id=>{ACTIVE=id;localStorage.setItem('cr_scn',id);W=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);rebuildPending();route()};
+window.setScn=id=>{ACTIVE=id;localStorage.setItem('cr_scn',id);W=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);rebuildPending();applyScnSel();route()};
 function rebuildPending(){
   pending={};
   if(ACTIVE!==OFFICIAL)return; // 提案只對正式版（負一#4）
