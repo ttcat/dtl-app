@@ -1897,7 +1897,7 @@ document.getElementById('maskBtn').onclick=()=>{
   route();
 };
 if(MASK)document.getElementById('maskBtn').textContent='🙈 金額';
-window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);
+window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);const el=document.getElementById('theme');if(el&&el.value!==v)el.value=v;
   document.documentElement.dataset.theme=(v==='base-auto')?(matchMedia('(prefers-color-scheme: dark)').matches?'base-dark':'base-light'):v};
 document.getElementById('theme').value=window.__themePref||'base-auto';
 addEventListener('hashchange',route);
