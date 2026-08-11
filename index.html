@@ -215,7 +215,8 @@ window.frmProject=()=>openForm('新增專案',[
 ],async v=>{
   if(!v.name||!v.start||!v.end)throw new Error('名稱與期間必填');
   const id=slug(v.name)+'_'+Math.floor(Math.random()*900+100);
-  const endD=new Date(+v.end.slice(0,5),+v.end.slice(5,7),0).getDate();
+  const endD=new Date(+v.end.slice(0,4),+v.end.slice(5,7),0).getDate();
+  if(!endD)throw new Error('迄月格式錯誤');
   await dbIns('projects',{id,name:v.name,donor:v.donor||'TBD',status:v.status,
     currency:v.currency,fx:+v.fx||null,period:`[${v.start}-01,${v.end}-${endD}]`,
     provisional:v.status==='pipeline',confidence:+v.conf||null,note:'B3 表單新增'});
@@ -289,9 +290,11 @@ function capOf(pid,m){
 }
 function zeroNote(pid,m){ // '—' 格的事件註記
   const evs=(DB.contract_events||[]).filter(e=>e.person_id===pid&&(e.type==='departure'||e.type==='hire'||e.type==='hire_planned'));
+  const today=new Date().toISOString().slice(0,10);
   for(const e of evs){const em=(e.date||'').slice(0,7).replace('-','');
-    if(e.type==='departure'&&m>em)return '已於 '+e.date+' 離職';
-    if(e.type!=='departure'&&m<em)return '預計 '+e.date+' 到職';}
+    const w=e.date>today?'預計 ':'已於 ';
+    if(e.type==='departure'&&m>em)return w+e.date+' 離職';
+    if(e.type!=='departure'&&m<em)return w+e.date+' 到職';}
   return '';
 }
 function fundOf(pid,m){ // admin-only: payer composition for one person-month
