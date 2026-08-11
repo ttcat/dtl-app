@@ -44,6 +44,9 @@ td.click{cursor:pointer} td.click:hover{background:var(--rail)}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
 .uFar{outline:1.5px dashed var(--fP);outline-offset:-1.5px;opacity:.82}
+.noteBox{white-space:pre-wrap;font-size:11.5px;line-height:1.55;min-width:120px;max-width:240px;text-align:left;border-radius:4px;padding:3px 5px;background:var(--rail)}
+.noteBox.clamp{max-height:8.6em;overflow:hidden}
+.noteBox.capEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px;cursor:pointer}
 .hasNote{position:relative}
 .hasNote::after{content:'';position:absolute;top:1.5px;right:1.5px;width:4px;height:4px;border-radius:50%;background:var(--fN)}
 th[id^=mcol_]{scroll-margin-left:150px}
@@ -569,12 +572,21 @@ window.frmNote=(scope,id,m)=>{
     await reload('備注已儲存');
   });
 };
-function noteCell(scope,id,m){
+function noteCell(scope,id,m){ // B16: 格內多段完整顯示；過長折疊
   const nt=noteOf(scope,id,m);
-  const shown=nt?(nt.length>8?nt.slice(0,8)+'…':nt):(isAdmin()?'＋':'·');
-  const cls=isAdmin()?'capEdit':'';
-  return `<td><span class="cell ${cls}" style="font-size:11px;${nt?'':'color:var(--ink3)'};max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-    ${isAdmin()?`onclick="frmNote('${scope}','${id}','${m}')"`:''} title="${esc(nt)||(isAdmin()?'點擊編輯當月重點':'')}">${esc(shown)}</span></td>`;
+  const edit=isAdmin()?`onclick="frmNote('${scope}','${id}','${m}')"`:'';
+  if(!nt)return `<td><span class="cell ${isAdmin()?'capEdit':''}" style="color:var(--ink3)" ${edit} title="${isAdmin()?'點擊編輯當月重點':''}">${isAdmin()?'＋':'·'}</span></td>`;
+  const long=nt.split('\n').length>6||nt.length>170;
+  const nid=('nb_'+scope+'_'+id+'_'+m).replace(/[^\w]/g,'_');
+  return `<td style="vertical-align:top"><div class="noteBox ${long?'clamp':''} ${isAdmin()?'capEdit':''}" id="${nid}" ${edit} title="${esc(nt)}">${esc(nt)}</div>${long?`<button class="miniact" style="margin-top:2px" onclick="toggNote('${nid}',this)">展開</button>`:''}</td>`;
+}
+window.toggNote=(nid,btn)=>{const el=document.getElementById(nid);if(!el)return;
+  el.classList.toggle('clamp');btn.textContent=el.classList.contains('clamp')?'展開':'收合'};
+function notesDigest(scope,id,label){ // B16: 逐月完整多段陳列（同事主要閱讀區）
+  const items=M.map(m=>({m,nt:noteOf(scope,id,m)})).filter(x=>x.nt);
+  if(!items.length)return '';
+  return `<h2>📖 ${label}重點總覽</h2><div class="mysum" style="border-left-color:var(--fN)">${items.map(x=>
+    `<div style="margin:0 0 12px"><b class="num" style="color:var(--fN)">${ML[x.m]||x.m}</b><div style="white-space:pre-wrap;margin-top:3px">${esc(x.nt)}</div></div>`).join('')}</div>`;
 }
 // ---- B5: 職務線 ↔ 在座者 對映 ----
 function lineAllocs(pr,name){
@@ -959,6 +971,7 @@ function vPerson(pid){
   h+=`<tr><td><b>📝 當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
   M.forEach(m=>{h+=noteCell('person',pid,m)});
   h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>'+farNote();
+  h+=notesDigest('person',pid,'本人逐月');
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
   return h;
@@ -1020,6 +1033,7 @@ function vProject(pr){
   h+=`<h2>📝 逐月重點（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>—</th>${thead()}</tr></thead><tbody>
     <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
   </tbody></table></div>`;
+  h+=notesDigest('project',pr,'本案逐月');
   const roster={};W.forEach(a=>{if(a.project_id===pr)roster[a.person_id]=(roster[a.person_id]||0)+ +a.amount_twd});
   h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>職位線</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>{
     const lns=[...new Set(W.filter(a=>a.project_id===pr&&a.person_id===pid&&a.ned_line).map(a=>a.ned_line.replace('*REBUDGET','')))];
