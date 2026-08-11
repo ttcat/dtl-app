@@ -33,6 +33,7 @@ th{font-size:11px;color:var(--ink2);text-align:left;padding:7px 8px;border-botto
 td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 tr:last-child td{border-bottom:0}
 tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
+td.click{cursor:pointer} td.click:hover{background:var(--rail)}
 .cell{display:inline-block;min-width:44px;text-align:center;border-radius:4px;padding:2px 4px;font-size:11.5px}
 .u100{background:color-mix(in oklab,var(--fN) 26%,transparent)} .u60{background:color-mix(in oklab,var(--fN) 14%,transparent)}
 .u0{background:color-mix(in oklab,var(--crit) 18%,transparent);color:var(--crit);font-weight:600}
@@ -43,6 +44,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
 .uFar{outline:1.5px dashed var(--fP);outline-offset:-1.5px;opacity:.82}
+th[id^=mcol_]{scroll-margin-left:150px}
 .tblwrap th:first-child,.tblwrap td:first-child{position:sticky;left:0;background:var(--card);z-index:2}
 tr.click:hover td:first-child{background:var(--rail)}
 .introw td{border-top:2px solid var(--line);color:var(--crit);font-weight:600}
@@ -96,7 +98,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
   <span id="status" class="note" style="margin:0"></span>
   <nav id="nav">
-    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#project">專案頁</a><a href="#amend">修約與閘門</a>
+    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">專案</a><a href="#lines">職務</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" id="theme" title="切換主題">◐</button>
     <select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select>
@@ -161,7 +163,7 @@ function buildTimeline(){
   FARM=mAdd(nowMonth(),12); // 超過未來 12 個月 ＝ 遠期規劃假設
 }
 const PLANB=()=>M.filter(m=>m>='202608'&&m<='202701'); // Plan B 視窗（Aug–1月）
-window.jumpYear=y=>{const el=document.getElementById('mcol_'+y);if(el)el.scrollIntoView({behavior:'smooth',inline:'start',block:'nearest'})};
+window.jumpYear=y=>{const el=document.getElementById('mcol_'+y);if(el)el.scrollIntoView({behavior:'auto',inline:'start',block:'nearest'})};
 const thead=()=>M.map(m=>`<th ${(m===M[0]||m.slice(4)==='01')?`id="mcol_${m.slice(0,4)}"`:''} ${m>FARM?'style="color:var(--ink3)"':''}>${ML[m]}</th>`).join('');
 const yearJump=()=>{const ys=[...new Set(M.map(m=>m.slice(0,4)))];
   return ys.length>1?`<div style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><span class="note" style="margin:0">跳至：</span>${ys.map(y=>`<button class="hbtn num" onclick="jumpYear('${y}')">${y}</button>`).join('')}</div>`:''};
@@ -306,11 +308,12 @@ window.applyProposal=async id=>{
   const sal=(p&&p.monthly_cost||{})[t.month]||0;const cap=capOf(t.person_id,t.month)||100;
   const amount=(x.payload&&x.payload.amount_twd!=null)?+x.payload.amount_twd:Math.round(sal/cap*l);
   const exist=W.find(a=>a.person_id===t.person_id&&a.month===t.month&&a.project_id===t.project_id);
+  const extraNed=(x.payload&&x.payload.ned_line)?{ned_line:x.payload.ned_line}:{};
   if(exist)await dbUpd('allocations',
     `person_id=eq.${t.person_id}&month=eq.${t.month}&project_id=eq.${t.project_id}&layer=eq.working`,
-    {loe_pct:l,amount_twd:amount});
+    {loe_pct:l,amount_twd:amount,...extraNed});
   else await dbIns('allocations',{person_id:t.person_id,month:t.month,project_id:t.project_id,
-    loe_pct:l,amount_twd:amount,layer:'working',provisional:(prmap[t.project_id]||{}).provisional||false});
+    loe_pct:l,amount_twd:amount,layer:'working',provisional:(prmap[t.project_id]||{}).provisional||false,...extraNed});
   await dbUpd('edit_proposals','id=eq.'+id,{status:'applied'});
   await reload('已套用提案 #'+id);
 };
@@ -331,6 +334,25 @@ function zeroNote(pid,m){ // '—' 格的事件註記
     if(e.type==='departure'&&m>em)return w+e.date+' 離職';
     if(e.type!=='departure'&&m<em)return w+e.date+' 到職';}
   return '';
+}
+// ---- B5: 職務線 ↔ 在座者 對映 ----
+function lineAllocs(pr,name){
+  const projAll=W.filter(a=>a.project_id===pr);
+  if(pr==='ned')return projAll.filter(a=>(a.ned_line||'').replace('*REBUDGET','')===name);
+  const lines=DB.budget_lines.filter(b=>b.project_id===pr);
+  return lines.length===1?projAll:[]; // 多線且非 NED：尚無逐線人力對映
+}
+function lineBurn(b){ // {rem,used,pct,over} in TWD
+  const proj=prmap[b.project_id]||{};
+  const fx=b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||1):1;
+  const rem=+b.remaining_orig*fx;
+  const used=(+b.july_draw_twd||0)+lineAllocs(b.project_id,b.name).reduce((s,a)=>s+(+a.amount_twd||0),0);
+  return{rem,used,pct:rem>0?Math.min(100,used/rem*100):0,over:rem>0&&used>rem+1};
+}
+function lineSeats(b){ // 目前與未來在座者
+  const now=nowMonth();
+  const pids=[...new Set(lineAllocs(b.project_id,b.name).filter(a=>a.month>=now&&+a.amount_twd>0).map(a=>a.person_id))];
+  return pids;
 }
 function fundOf(pid,m){ // admin-only: payer composition for one person-month
   const p=pmap[pid];const rows=personMonth(pid,m);
@@ -437,7 +459,7 @@ function applyRoleNav(){
   const links=document.querySelectorAll('nav a');
   links.forEach(a=>{
     const pg=a.hash.slice(1).split('/')[0];
-    if(!isAdmin()&&(pg==='project'||pg==='amend'))a.style.display='none';
+    if(!isAdmin()&&['project','projects','lines','line','amend'].includes(pg))a.style.display='none';
     if(!isAdmin()&&pg==='person'){a.textContent='我的頁面';a.href='#person/'+(ROLE.person_id||'')}
   });
   document.getElementById('maskBtn').style.display=isAdmin()?'':'none';
@@ -538,16 +560,18 @@ function vMaster(){
       if(fund){
         const f=fundOf(p.id,m);
         if(!f.active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-        intMonth[m]+=f.internal;
+        const provPerson=p.provisional&&p.id!=='newfo'; // D9: 假想人力不計入真實失血合計（與未配置 KPI 同一排除規則）
+        if(!provPerson)intMonth[m]+=f.internal;
         const prov=f.rows.some(a=>a.provisional);
         const tip=f.rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')
-          +(f.gap>0.5?`&#10;⚠ 未覆蓋缺口 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'');
+          +(f.gap>0.5?`&#10;⚠ 未覆蓋缺口 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'')
+          +(provPerson?'&#10;（暫定人力，不計入每月存金合計）':'');
         let cls,txt;
         if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
         else if(f.internal<=500){cls='fG';txt=Math.round(loeOf(p.id,m).used)}
         else if(f.internal>=f.sal-500||f.grant<=500){cls='fR';txt=k(f.internal)}
         else{cls='fY';txt=k(f.internal)}
-        h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
+        h+=`<td><span class="cell num ${cls} ${(prov||provPerson)?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
         return;
       }
       const{used,cap,rows,active}=loeOf(p.id,m);
@@ -613,7 +637,7 @@ function vPerson(pid){
   h+=`<div class="tblwrap"><table><thead><tr><th>專案</th>${thead()}</tr></thead><tbody>`;
   prjs.forEach(pr=>{
     const proj=prmap[pr];
-    h+=`<tr><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
+    h+=`<tr><td class="${isAdmin()?'click':''}" ${isAdmin()?`onclick="location.hash='#project/${pr}'"`:''}><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
     M.forEach(m=>{
       const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const pd=pending[[pid,m,pr].join('|')];
@@ -647,7 +671,8 @@ function vPerson(pid){
 function vProject(pr){
   pr=pr&&prmap[pr]?pr:'ned';const proj=prmap[pr];
   const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（暫定）':''}</option>`).join('')}</select>`;
-  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
+  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+   <a href="#projects" class="hbtn" style="text-decoration:none">≡ 專案總覽</a>${sel}
    ${proj.provisional?`<span class="prov-badge">pipeline${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
    ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增專案</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增職位線</button>`:''}
    <span style="font-size:12px;color:var(--ink3)">${proj.note||''}</span></div>`;
@@ -660,7 +685,7 @@ function vProject(pr){
       const rem=+b.remaining_orig*(b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||31.5):1);
       const jl=+b.july_draw_twd||0;const bd=billed[b.name]||0;
       const used=jl+bd;const pct=rem>0?Math.min(100,used/rem*100):0;
-      h+=`<tr><td>${b.name}${b.provisional?'<span class="prov-badge">待文件</span>':''}</td>
+      h+=`<tr class="click" onclick="location.hash='#line/${encodeURIComponent(pr+'||'+b.name)}'"><td>${b.name}${b.provisional?'<span class="prov-badge">待文件</span>':''}</td>
        <td class="num" title="原幣顯示，不隨幣別切換換算">${origMoney(+b.remaining_orig,b.currency)}</td>
        <td class="num">${jl?k(jl):'—'}</td><td class="num">${bd?k(bd):'—'}</td>
        <td><div class="bar"><i class="${used>rem&&rem>0?'over':''}" style="width:${pct}%"></i></div></td>
@@ -678,6 +703,135 @@ function vProject(pr){
   return h;
 }
 
+// ---- B5: 專案總覽 ----
+function vProjects(){
+  let h=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+    ${isAdmin()?'<button class="hbtn" onclick="frmProject()">＋新增專案</button>':''}
+    <span class="note" style="margin:0">一列一案；點列進單一專案頁。虛線＝pipeline 暫定。</span></div>
+  <div class="tblwrap"><table><thead><tr><th>專案</th><th>Donor</th><th>期間</th><th>狀態</th><th>預算(TWD)</th><th>已排＋7月</th><th>燒耗</th><th>排程迄月</th><th>人力</th></tr></thead><tbody>`;
+  DB.projects.forEach(p=>{
+    const mm=String(p.period||'').match(/\[(\d{4})-(\d{2})[^,]*,(\d{4})-(\d{2})-(\d{2})/);
+    let per='—';
+    if(mm){let em=mm[3]+mm[4];if(String(p.period).trim().endsWith(')')&&mm[5]==='01')em=mAdd(em,-1);
+      per=`${+mm[1]}/${+mm[2]}–${+em.slice(0,4)}/${+em.slice(4)}`}
+    const lines=DB.budget_lines.filter(b=>b.project_id===p.id);
+    let budget=0,used=0;
+    lines.forEach(b=>{const x=lineBurn(b);budget+=x.rem;used+=x.used});
+    const projW=W.filter(a=>a.project_id===p.id);
+    if(!lines.length)used=projW.reduce((s,a)=>s+(+a.amount_twd||0),0);
+    const lastM=projW.reduce((mx,a)=>a.month>mx?a.month:mx,'');
+    const ppl=new Set(projW.map(a=>a.person_id)).size;
+    const pct=budget>0?Math.min(100,used/budget*100):0;
+    h+=`<tr class="click" onclick="location.hash='#project/${p.id}'">
+      <td><b>${p.name}</b>${p.provisional?`<span class="prov-badge">pipeline${p.confidence!=null?' '+Math.round(p.confidence*100)+'%':''}</span>`:''}</td>
+      <td>${p.donor||''}</td><td class="num">${per}</td>
+      <td><span class="pill ${p.status==='active'?'approved':p.status==='pipeline'?'pending':'draft'}">${p.status}</span></td>
+      <td class="num">${budget?k(budget):'—'}</td><td class="num">${used?k(used):'—'}</td>
+      <td>${budget?`<div class="bar"><i class="${used>budget?'over':''}" style="width:${pct}%"></i></div>`:'—'}</td>
+      <td class="num">${lastM?(+lastM.slice(0,4))+'/'+(+lastM.slice(4)):'—'}</td><td class="num">${ppl||'—'}</td></tr>`;
+  });
+  h+='</tbody></table></div><p class="note">預算＝各線剩餘合計（原幣×匯率）；已排＝7月草帳＋工作層各月配置；排程迄月＝最後一個有配置的月份。</p>';
+  return h;
+}
+// ---- B5: 職務總覽 ----
+let LF=localStorage.getItem('cr_lf')||'all';
+window.setLF=v=>{LF=v;localStorage.setItem('cr_lf',v);route()};
+function vLines(){
+  let h=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <button class="hbtn" style="${LF==='all'?'font-weight:700;border-color:var(--ink)':''}" onclick="setLF('all')">全部</button>
+    <button class="hbtn" style="${LF==='vacant'?'font-weight:700;border-color:var(--warn)':''}" onclick="setLF('vacant')">有錢沒人（空缺財源）</button>
+    <button class="hbtn" style="${LF==='over'?'font-weight:700;border-color:var(--crit)':''}" onclick="setLF('over')">有人沒錢（超編警報）</button>
+    <span class="note" style="margin:0">點列進職務頁看接力時間軸。</span></div>
+  <div class="tblwrap"><table><thead><tr><th>案</th><th>職位線</th><th>類別</th><th>預算(原幣)</th><th>燒耗</th><th>目前在座</th><th>狀態</th></tr></thead><tbody>`;
+  let n=0;
+  DB.budget_lines.forEach(b=>{
+    const{rem,used,pct,over}=lineBurn(b);
+    const seats=lineSeats(b);
+    const mapped=b.project_id==='ned'||DB.budget_lines.filter(x=>x.project_id===b.project_id).length===1;
+    const vacant=rem>0&&mapped&&seats.length===0&&!b.ring_fence;
+    const st=over?['超','rejected']:vacant?['缺','pending']:['滿','approved'];
+    if(LF==='vacant'&&!vacant)return;if(LF==='over'&&!over)return;
+    n++;
+    const key=encodeURIComponent(b.project_id+'||'+b.name);
+    h+=`<tr class="click" onclick="location.hash='#line/${key}'">
+      <td><b style="color:var(${PC[b.project_id]||'--ink'})">${SHORT[b.project_id]||b.project_id}</b></td>
+      <td>${b.name}${b.provisional?'<span class="prov-badge">暫定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}</td>
+      <td>${b.category||''}</td>
+      <td class="num">${origMoney(+b.remaining_orig,b.currency)}</td>
+      <td><div class="bar"><i class="${over?'over':''}" style="width:${pct}%"></i></div></td>
+      <td>${mapped?(seats.map(pid=>pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid).join('、')||'<span style="color:var(--warn)">（無人）</span>'):'<span style="color:var(--ink3)" title="本案未逐線對映人力，請看專案頁">—</span>'}</td>
+      <td><span class="pill ${st[1]}">${st[0]}</span></td></tr>`;
+  });
+  if(!n)h+='<tr><td colspan=7>此篩選下沒有職位線</td></tr>';
+  h+=`</tbody></table></div><p class="note">「缺」＝有預算但目前起無人在座（＝rebudget 彈藥庫）；「超」＝已排＋7月草帳超過線剩餘（需 rebudget／修約）。ring-fence 線不列入「缺」。</p>`;
+  return h;
+}
+// ---- B5: 單一職務頁（接力/並聯時間軸） ----
+function vLine(keyEnc){
+  const[pr,name]=decodeURIComponent(keyEnc||'').split('||');
+  const b=DB.budget_lines.find(x=>x.project_id===pr&&x.name===name);
+  if(!b)return '<p class="banner err">找不到這條職位線。</p>';
+  const{rem,used,pct,over}=lineBurn(b);
+  const allocs=lineAllocs(pr,name);
+  const pids=[...new Set(allocs.map(a=>a.person_id))];
+  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <a href="#lines" class="hbtn" style="text-decoration:none">≡ 職務總覽</a>
+    <a href="#project/${pr}" class="hbtn" style="text-decoration:none;color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</a>
+    <b>${name}</b>${b.provisional?'<span class="prov-badge">暫定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}
+    <span class="pill num" title="原幣，不隨幣別切換">${origMoney(+b.remaining_orig,b.currency)||'（金額隱藏）'}</span>
+    <span class="num" style="font-size:12px;color:${over?'var(--crit)':'var(--ink2)'}">已排 ${k(used)||''}（${Math.round(pct)}%）${over?'⚠ 爆線':''}</span>
+    ${isAdmin()?`<button class="hbtn" onclick="frmSeat('${pr}','${name.replace(/'/g,"\\'")}')">＋安排接替／加入</button>`:''}</div>
+  <div class="tblwrap"><table><thead><tr><th>在座者</th>${thead()}</tr></thead><tbody>`;
+  if(!pids.length)h+=`<tr><td colspan="${M.length+1}">目前無人在座${pr!=='ned'&&DB.budget_lines.filter(x=>x.project_id===pr).length>1?'（本案未逐線對映人力）':''}——${isAdmin()?'用「＋安排接替」排人。':''}</td></tr>`;
+  pids.forEach(pid=>{
+    const p=pmap[pid]||{};
+    h+=`<tr><td class="click" onclick="location.hash='#person/${pid}'"><b>${p.alias||p.name||pid}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
+    M.forEach(m=>{
+      const a=allocs.find(x=>x.person_id===pid&&x.month===m);
+      if(!a||!(+a.amount_twd>0)){h+='<td><span class="cell" style="color:var(--ink3)">·</span></td>';return}
+      const l=a.loe_pct!=null?Math.round(+a.loe_pct):'●';
+      h+=`<td><span class="cell num u100 ${a.provisional?'uP':''} ${m>FARM?'uFar':''}" title="${k(+a.amount_twd)}">${l}</span></td>`;
+    });
+    h+='</tr>';
+  });
+  h+=`</tbody></table></div>
+  <p class="note">每列＝一位在座者的期間條（格內＝該月 LOE%）；同月多列＝並聯在座。安排接替＝對正式版送「待套用提案」，由財務/CEO 在修約頁套用；系統已先檢查每月容量與累計不爆線。</p>${farNote()}`;
+  return h;
+}
+window.frmSeat=(pr,name)=>{
+  const now=nowMonth();
+  const defFrom=M.includes(now)?now:M[0];
+  openForm('安排接替／加入：'+name,[
+    {id:'pid',label:'人員',type:'select',value:'',options:[['','（選擇人員）'],...DB.people.filter(p=>p.id!=='tara').map(p=>[p.id,(p.alias||p.name)+(p.provisional?'（暫定）':'')])]},
+    {id:'from',label:'起月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
+    {id:'to',label:'迄月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
+    {id:'loe',label:'LOE %',type:'number',value:50},
+  ],async v=>{
+    const b=DB.budget_lines.find(x=>x.project_id===pr&&x.name===name);
+    const l=+v.loe;if(!(l>0&&l<=100))throw new Error('LOE 需在 1–100');
+    if(v.to<v.from)throw new Error('迄月不可早於起月');
+    const months=M.filter(m=>m>=v.from&&m<=v.to);
+    const p=pmap[v.pid];if(!p)throw new Error('請選人員');
+    let add=0;
+    for(const m of months){
+      const sal=(p.monthly_cost||{})[m]||0;
+      if(!sal)throw new Error(ML[m]+'：'+(p.alias||p.name)+' 無在職成本（未到職／已離職／資料未排）');
+      const{used,cap}=loeOf(v.pid,m);
+      if(used+l>cap+0.5)throw new Error(ML[m]+' 合計將達 '+Math.round(used+l)+'%，超過容量 '+cap+'%');
+      add+=Math.round(sal/capOf(v.pid,m)*l);
+    }
+    const{rem,used:lu}=lineBurn(b);
+    if(rem>0&&lu+add>rem+1)throw new Error('累計爆線：已排 '+Math.round(lu/1000)+'k＋新增 '+Math.round(add/1000)+'k > 線剩餘 '+Math.round(rem/1000)+'k');
+    for(const m of months){
+      const amt=Math.round(((p.monthly_cost||{})[m]||0)/capOf(v.pid,m)*l);
+      await dbIns('edit_proposals',{author:localStorage.getItem('cr_author')||'admin',target_table:'allocations',action:'update',
+        target_pk:{person_id:v.pid,month:m,project_id:pr},
+        payload:{loe_pct:l,amount_twd:amt,...(pr==='ned'?{ned_line:name}:{})},
+        note:'職務頁安排：'+name+'（'+ML[v.from]+'–'+ML[v.to]+'）'});
+    }
+    await reload('已送出 '+months.length+' 筆接替提案（修約頁套用後生效）');
+  });
+};
 function vAmend(){
   let h=`<h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
   DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
@@ -767,9 +921,10 @@ document.getElementById('edSave').onclick=async()=>{
 // ---- shell ----
 function route(){
   if(!DB)return;
-  let[page,arg]=(location.hash||'#master').slice(1).split('/');
+  const parts=(location.hash||'#master').slice(1).split('/');
+  let page=parts[0],arg=parts.slice(1).join('/');
   if(!isAdmin()){
-    if(page==='project'||page==='amend'){
+    if(['project','projects','lines','line','amend'].includes(page)){
       document.getElementById('title').textContent='僅限管理者';
       document.getElementById('app').innerHTML='<p class="banner err">此頁僅管理者可見。</p>';
       return;
@@ -777,11 +932,13 @@ function route(){
     if(page==='person'&&ROLE.person_id&&arg&&arg!==ROLE.person_id){arg=ROLE.person_id;history.replaceState(null,'','#person/'+arg)}
     if(page==='person'&&!arg&&ROLE.person_id)arg=ROLE.person_id;
   }
-  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+page));
-  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',amend:'修約與閘門'};
+  const navPg=page==='project'?'projects':page==='line'?'lines':page;
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+navPg));
+  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',projects:'專案總覽',lines:'職務總覽',line:'職務頁',amend:'修約與閘門'};
   document.getElementById('title').textContent=T[page]||'總表';
   document.getElementById('app').innerHTML=
-    (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='amend'?vAmend():vMaster());
+    (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='projects'?vProjects()
+     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():vMaster());
 }
 async function reload(msg){
   const st=document.getElementById('status');
