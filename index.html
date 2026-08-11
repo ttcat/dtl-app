@@ -282,16 +282,18 @@ async function recalcBenefits(scnId){
   const rate=DB.settings.benefit_rate||{};
   const scn=SCNS.find(s=>s.id===scnId)||{};
   const baseMap=bb[scnId]||bb[scn.parent]||bb[OFFICIAL]||{};
+  // 自足取新鮮資料——不依賴呼叫端快取時機（寫入後立即重算也正確）
+  const stRows=await qAll('staffing?select=person_id,month,cost&scenario_id=eq.'+encodeURIComponent(scnId)+'&order=month');
+  const alRows=await qAll('allocations?select=person_id,month,project_id,amount_twd&scenario_id=eq.'+encodeURIComponent(scnId)+'&layer=eq.working&order=id');
+  const stMap={};stRows.forEach(r=>stMap[r.person_id+'|'+r.month]=+r.cost||0);
+  const alMap={};alRows.forEach(a=>{const k2=a.person_id+'|'+a.month;(alMap[k2]=alMap[k2]||{})[a.project_id]=(alMap[k2][a.project_id]||0)+(+a.amount_twd||0)});
   const tgt={},estFlag={};
   DB.people.forEach(p=>{ // 資格判定在內層：有模型基準者一律計（vac 亦然）；無基準且 flag=false 才跳過
     M.forEach(m=>{
-      const cost=+((STAFF[scnId+'|'+p.id+'|'+m]||{}).cost)||0;
+      const cost=stMap[p.id+'|'+m]||0;
       if(cost<=0)return;
       const e=baseMap[p.id+'|'+m];
-      // 依 DB 真值聚合該人月各案配置
-      const byPr={};
-      DB.allocations.forEach(a=>{if(a.layer==='working'&&a.scenario_id===scnId&&a.person_id===p.id&&a.month===m)
-        byPr[a.project_id]=(byPr[a.project_id]||0)+(+a.amount_twd||0)});
+      const byPr=alMap[p.id+'|'+m]||{};
       let amt,est=false;
       if(e&&Math.round(+e.c)===Math.round(cost)){
         // 組成未變（±1 元）→ 直接沿用模型拆分值（零漂移基準）
@@ -309,7 +311,7 @@ async function recalcBenefits(scnId){
       add('internal',gap);
     });
   });
-  const cur=EXP.filter(e=>e.scenario_id===scnId&&e.category==='benefits');
+  const cur=await qAll('expense_plan?select=*&scenario_id=eq.'+encodeURIComponent(scnId)+'&category=eq.benefits&order=id');
   const curMap={};cur.forEach(e=>{curMap[e.month+'|'+e.project_id]=e});
   const nedBen=(DB.budget_lines.find(b=>b.project_id==='ned'&&b.category==='Benefits')||{}).id||null;
   let writes=0;
