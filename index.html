@@ -193,8 +193,11 @@ let DB=null,pmap={},prmap={},W=[],pending={};
 let VIEW=localStorage.getItem('cr_view')||'load';
 window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
 // ---- B6: 情境系統 ----
-let OFFICIAL='V8.1',ACTIVE='V8.1',SCNS=[];
+let OFFICIAL='V8.1',ACTIVE='V8.1',SCNS=[],ROLEMAP={};
 const myDrafts=()=>SCNS.filter(s=>s.status==='draft'&&ROLE&&s.owner===ROLE.email);
+const isAiOwner=email=>ROLEMAP[email]==='ai';
+const aiDrafts=()=>SCNS.filter(s=>s.status==='draft'&&isAiOwner(s.owner));
+const canEditScn=()=>ACTIVE!==OFFICIAL&&myDrafts().some(s=>s.id===ACTIVE); // AI 草稿對人類唯讀
 window.setScn=id=>{ACTIVE=id;localStorage.setItem('cr_scn',id);W=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);rebuildPending();route()};
 function rebuildPending(){
   pending={};
@@ -208,23 +211,28 @@ function applyScnSel(){
   document.getElementById('scnNew').style.display=isAdmin()?'':'none';
   if(!isAdmin())return;
   el.innerHTML=`<option value="${OFFICIAL}">📌 ${(SCNS.find(s=>s.id===OFFICIAL)||{}).name||'正式版'}</option>`
-    +myDrafts().map(s=>`<option value="${s.id}">🧪 ${s.name||s.id}</option>`).join('');
+    +myDrafts().map(s=>`<option value="${s.id}">🧪 ${s.name||s.id}</option>`).join('')
+    +aiDrafts().filter(s=>!myDrafts().some(x=>x.id===s.id)).map(s=>`<option value="${s.id}">🤖 ${s.name||s.id}</option>`).join('');
   el.value=ACTIVE;
 }
 const draftBanner=()=>{
   if(!isAdmin()||ACTIVE===OFFICIAL)return '';
   const scn=SCNS.find(s=>s.id===ACTIVE)||{};
-  return `<p class="banner" style="border-color:var(--fP)">🧪 草稿情境「<b>${scn.name||ACTIVE}</b>」——只有你看得到；點格＝直接改草稿（不走提案）。
+  const ai=isAiOwner(scn.owner);
+  return `<p class="banner" style="border-color:var(--fP)">${ai?'🤖 AI 提案情境':'🧪 草稿情境'}「<b>${scn.name||ACTIVE}</b>」——${ai?'AI 產生的提案（人類唯讀）：看比較、決定定案或封存。':'只有你看得到；點格＝直接改草稿（不走提案）。'}
     <a href="#compare">與正式版比較</a>
     <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
     <button class="miniact" onclick="archiveScn()">封存草稿</button></p>`;
 };
-window.frmScn=()=>openForm('開新情境（複製正式版）',[{id:'name',label:'情境名稱*',placeholder:'例：加碼全過版'}],async v=>{
+window.frmScn=()=>openForm('開新情境（複製正式版）',[
+  {id:'name',label:'情境名稱*',placeholder:'例：加碼全過版'},
+  {id:'why',label:'說明(選填)',placeholder:'這個情境想驗證什麼'},
+],async v=>{
   if(!v.name)throw new Error('名稱必填');
   if(myDrafts().length>=3)throw new Error('每人最多 3 個草稿——請先封存舊草稿');
   const id='d_'+slug(v.name)+'_'+Math.floor(Math.random()*9000+1000);
   await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
-    status:'draft',owner:ROLE.email,name:v.name,note:'草稿（B6）'});
+    status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,note:'草稿（B6）'});
   const rows=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL)
     .map(a=>({person_id:a.person_id,month:a.month,project_id:a.project_id,loe_pct:a.loe_pct,
       amount_twd:a.amount_twd,ned_line:a.ned_line,layer:'working',scenario_id:id,provisional:a.provisional}));
@@ -549,6 +557,7 @@ async function loadAll(){
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
       q('capacity_overrides?select=*'),q('scenario_versions?select=*')]);
+    try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
   }else{
     // member: 無金額視圖；不取任何含金額的表
     let props=[];
@@ -574,7 +583,7 @@ async function loadAll(){
   if(isAdmin()){
     OFFICIAL=(SCNS.find(s=>s.status==='official')||{id:'V8.1'}).id;
     const saved=localStorage.getItem('cr_scn');
-    ACTIVE=(saved&&(saved===OFFICIAL||myDrafts().some(s=>s.id===saved)))?saved:OFFICIAL;
+    ACTIVE=(saved&&(saved===OFFICIAL||myDrafts().some(s=>s.id===saved)||aiDrafts().some(s=>s.id===saved)))?saved:OFFICIAL;
     W=allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);
   }else{
     W=allocations.filter(a=>a.layer==='working'); // member 視圖伺服器端已限 official
@@ -898,6 +907,7 @@ window.frmSeat=(pr,name)=>{
     const{rem,used:lu}=lineBurn(b);
     if(rem>0&&lu+add>rem+1)throw new Error('累計爆線：已排 '+Math.round(lu/1000)+'k＋新增 '+Math.round(add/1000)+'k > 線剩餘 '+Math.round(rem/1000)+'k');
     if(isAdmin()&&ACTIVE!==OFFICIAL){ // 草稿：直接生效
+      if(!canEditScn())throw new Error('這是 AI（或他人）的草稿，對你唯讀');
       for(const m of months){
         const amt=Math.round(((p.monthly_cost||{})[m]||0)/capOf(v.pid,m)*l);
         const exist=W.find(a=>a.person_id===v.pid&&a.month===m&&a.project_id===pr);
@@ -938,11 +948,13 @@ function vCompare(){
   const offName=(SCNS.find(s=>s.id===OFFICIAL)||{}).name||'正式版';
   const dTag=v=>v>500?`<span style="color:var(--crit)">▲${k(v)}</span>`:v<-500?`<span style="color:var(--good)">▼${k(-v)}</span>`:'—';
   const dN=v=>v>0?`<span style="color:var(--crit)">▲${v}</span>`:v<0?`<span style="color:var(--good)">▼${-v}</span>`:'—';
+  const ai=isAiOwner(scn.owner);
   let h=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <b>情境比較：</b><span class="pill">📌 ${offName}</span> vs <span class="pill" style="border-style:dashed">🧪 ${scn.name||ACTIVE}</span>
+    <b>情境比較：</b><span class="pill">📌 ${offName}</span> vs <span class="pill" style="border-style:dashed">${ai?'🤖':'🧪'} ${scn.name||ACTIVE}</span>
     <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
     <a class="hbtn" href="#master" style="text-decoration:none">回總表</a></div>
-  <div class="tblwrap"><table><thead><tr><th>指標</th><th>正式版</th><th>草稿</th><th>差異</th></tr></thead><tbody>
+  ${scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}`;
+  h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>正式版</th><th>草稿</th><th>差異</th></tr></thead><tbody>
     <tr><td>存金合計（實，全時間軸）</td><td class="num">${k(mo.internal)||'0'}</td><td class="num">${k(md.internal)||'0'}</td><td class="num">${dTag(md.internal-mo.internal)}</td></tr>
     <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
@@ -1048,6 +1060,7 @@ document.getElementById('edSave').onclick=async()=>{
   const total=edCtx.othersLoe+l;
   if(l<0||total>edCtx.cap+0.5){updAmt();return}
   if(isAdmin()&&ACTIVE!==OFFICIAL){ // 草稿：直接寫入，不走提案
+    if(!canEditScn()){edError('這是 AI（或他人）的草稿，對你唯讀——請用「與正式版比較」後決定定案或封存。');return}
     const t=edCtx;const amt=Math.round(t.sal/t.cap*l);
     const exist=W.find(a=>a.person_id===t.pid&&a.month===t.m&&a.project_id===t.pr);
     try{
