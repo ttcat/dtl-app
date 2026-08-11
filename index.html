@@ -533,13 +533,18 @@ async function enterApp(){
 }
 
 async function q(path){const r=await authFetch(SB+'/rest/v1/'+path);if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
+async function qAll(path){ // Supabase 每次最多回 1000 列——分頁抓齊
+  let out=[],off=0;
+  for(;;){const page=await q(path+'&limit=1000&offset='+off);out=out.concat(page);if(page.length<1000)break;off+=1000;if(off>50000)break}
+  return out;
+}
 async function loadAll(){
   let people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals;
   let capov=[],scnRows=[];
   if(isAdmin()){
     [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals,capov,scnRows]=await Promise.all([
       q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
-      q('allocations?select=*&limit=10000'),q('amendment_items?select=*&order=id'),
+      qAll('allocations?select=*&order=id'),q('amendment_items?select=*&order=id'),
       q('decisions?select=*&order=id'),q('gates?select=*&order=id'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
@@ -548,7 +553,7 @@ async function loadAll(){
     // member: 無金額視圖；不取任何含金額的表
     let props=[];
     [people,allocations,projects,deliverables,contract_events,props,capov]=await Promise.all([
-      q('people_public?select=*&order=id'),q('allocations_public?select=*&limit=3000'),
+      q('people_public?select=*&order=id'),qAll('allocations_public?select=*&order=id'),
       q('projects?select=id,name,status,provisional,confidence,period'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('edit_proposals_public?select=*&order=id.desc&limit=100'),
