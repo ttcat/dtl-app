@@ -38,6 +38,11 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
 .u0{background:color-mix(in oklab,var(--crit) 18%,transparent);color:var(--crit);font-weight:600}
 .uP{outline:1.5px dashed var(--fP);outline-offset:-1.5px}
 .uOver{background:color-mix(in oklab,var(--crit) 30%,transparent);color:var(--crit);font-weight:700;outline:1.5px solid var(--crit);outline-offset:-1.5px}
+.fG{background:color-mix(in oklab,var(--good) 22%,transparent)}
+.fY{background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warn);font-weight:600}
+.fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
+.fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
+.introw td{border-top:2px solid var(--line);color:var(--crit);font-weight:600}
 #edErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .uEdit{cursor:pointer} .uEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
@@ -135,6 +140,17 @@ const k=v=>money((v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k')
 const wan=v=>money((v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬');
 const usd=v=>money('US$'+(+v).toLocaleString('en',{maximumFractionDigits:0}));
 let DB=null,pmap={},prmap={},W=[],pending={};
+let VIEW=localStorage.getItem('cr_view')||'load';
+window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
+function fundOf(pid,m){ // admin-only: payer composition for one person-month
+  const p=pmap[pid];const rows=personMonth(pid,m);
+  const sal=(p.monthly_cost||{})[m]||0;
+  let intAmt=0,grant=0;
+  rows.forEach(a=>{const v=+a.amount_twd||0;if(a.project_id==='internal')intAmt+=v;else grant+=v});
+  const gap=Math.max(0,sal-(grant+intAmt));      // 薪資>配置合計 → 差額列存金缺口
+  const internal=intAmt+gap;
+  return {sal,rows,grant,intAmt,gap,internal,active:sal>0||rows.length>0};
+}
 
 // ---------- auth (dependency-free GoTrue REST) ----------
 const AUTH=SB+'/auth/v1';
@@ -262,8 +278,8 @@ async function loadAll(){
       q('people_public?select=*&order=id'),q('allocations_public?select=*&limit=3000'),
       q('projects?select=id,name,status,provisional,confidence'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
-      q('edit_proposals?select=id,created_at,author,status,target_table,target_pk,loe:payload->loe_pct&order=id.desc&limit=100')]);
-    proposals=props.map(x=>({...x,payload:{loe_pct:x.loe}}));
+      q('edit_proposals_public?select=*&order=id.desc&limit=100')]);
+    proposals=props;
     budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
     people.forEach(p=>{if(!p.monthly_cost)p.monthly_cost={}});
   }
@@ -307,12 +323,32 @@ function vMaster(){
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
-  <div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>
+  ${isAdmin()?`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="seg" style="width:220px"><button class="${VIEW==='load'?'on':''}" onclick="setView('load')">負載視圖</button><button class="${VIEW==='fund'?'on':''}" onclick="setView('fund')">資金視圖</button></div></div>`:''}
+  ${isAdmin()&&VIEW==='fund'
+    ?`<div class="legend"><span><b style="background:color-mix(in oklab,var(--good) 40%,transparent)"></b>全 grant 覆蓋</span><span><b style="background:color-mix(in oklab,var(--warn) 45%,transparent)"></b>部分存金（格內＝存金額）</span><span><b style="background:color-mix(in oklab,var(--crit) 45%,transparent)"></b>全存金/無資金</span><span><b style="border:2px solid var(--crit);background:transparent"></b>有薪無配置（雙重警報）</span></div>`
+    :`<div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>`}
   <div class="tblwrap"><table><thead><tr><th>人員</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
+  const fund=isAdmin()&&VIEW==='fund';
+  const intMonth={};M.forEach(m=>intMonth[m]=0);
   DB.people.forEach(p=>{
     if(p.id==='tara')return;
     h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
     M.forEach(m=>{
+      if(fund){
+        const f=fundOf(p.id,m);
+        if(!f.active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+        intMonth[m]+=f.internal;
+        const prov=f.rows.some(a=>a.provisional);
+        const tip=f.rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')
+          +(f.gap>0.5?`&#10;⚠ 未覆蓋缺口 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'');
+        let cls,txt;
+        if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
+        else if(f.internal<=500){cls='fG';txt=Math.round(loeOf(p.id,m).used)}
+        else if(f.internal>=f.sal-500||f.grant<=500){cls='fR';txt=k(f.internal)}
+        else{cls='fY';txt=k(f.internal)}
+        h+=`<td><span class="cell num ${cls} ${prov?'uP':''}" title="${tip}">${txt}</span></td>`;
+        return;
+      }
       const{used,cap,rows,active}=loeOf(p.id,m);
       if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
       const prov=rows.some(a=>a.provisional);
@@ -323,7 +359,14 @@ function vMaster(){
     });
     h+='</tr>';
   });
-  return h+'</tbody></table></div><p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
+  if(fund){
+    h+=`<tr class="introw"><td><b>每月存金合計</b></td>${M.map(m=>`<td><span class="cell num">${intMonth[m]>500?k(intMonth[m]):'0'}</span></td>`).join('')}</tr>`;
+  }
+  h+='</tbody></table></div>';
+  h+=fund
+    ?'<p class="note">資金視圖：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。</p>'
+    :'<p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
+  return h;
 }
 
 function mySummary(pid){
