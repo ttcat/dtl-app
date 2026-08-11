@@ -464,10 +464,12 @@ function noteCell(scope,id,m){
 }
 // ---- B5: 職務線 ↔ 在座者 對映 ----
 function lineAllocs(pr,name){
+  // 鐵律：線的身分＝(project_id, line)——先在案內以名對映，同名異案永不合併
   const projAll=W.filter(a=>a.project_id===pr);
-  if(pr==='ned')return projAll.filter(a=>(a.ned_line||'').replace('*REBUDGET','')===name);
+  const named=projAll.filter(a=>(a.ned_line||'').replace('*REBUDGET','')===name);
+  if(named.length||pr==='ned')return named;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
-  return lines.length===1?projAll:[]; // 多線且非 NED：尚無逐線人力對映
+  return lines.length===1?projAll:[]; // 無名列且單線案＝結構唯一歸該線
 }
 function lineBurn(b){ // {rem,used,pct,over} in TWD
   const proj=prmap[b.project_id]||{};
@@ -812,7 +814,7 @@ function vPerson(pid){
       const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
       h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
-        title="${a?k(a.amount_twd):''}${a&&a.ned_line?'｜'+a.ned_line:''}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}</span></td>`;
+        title="${a?k(a.amount_twd):''}｜本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}｜${(a&&a.ned_line)?esc(a.ned_line):'未歸線'}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -858,7 +860,7 @@ function vProject(pr){
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
   if(lines.length){
     const billed={};
-    if(pr==='ned')W.forEach(a=>{if(a.project_id==='ned'&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}});
+    W.forEach(a=>{if(a.project_id===pr&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}}); // 案內聚合——(案,線) 複合鍵
     h+=`<h2>預算線</h2><div class="tblwrap"><table><thead><tr><th>線</th><th>剩餘(原幣)</th><th>7月</th><th>8–1月已排</th><th>燒耗</th><th>標記</th></tr></thead><tbody>`;
     lines.forEach(b=>{
       const rem=+b.remaining_orig*(b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||31.5):1);
@@ -903,7 +905,9 @@ function vProject(pr){
     <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
   </tbody></table></div>`;
   const roster={};W.forEach(a=>{if(a.project_id===pr)roster[a.person_id]=(roster[a.person_id]||0)+ +a.amount_twd});
-  h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>`<tr class="click" onclick="location.hash='#person/${pid}'"><td>${pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid}</td><td class="num">${k(v)}</td></tr>`).join('')||'<tr><td colspan=2>尚無配置</td></tr>'}</tbody></table></div></div>`;
+  h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>職位線</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>{
+    const lns=[...new Set(W.filter(a=>a.project_id===pr&&a.person_id===pid&&a.ned_line).map(a=>a.ned_line.replace('*REBUDGET','')))];
+    return `<tr class="click" onclick="location.hash='#person/${pid}'"><td>${pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid}</td><td style="font-size:11.5px;white-space:normal">${lns.map(esc).join('、')||'<span style="color:var(--ink3)">未歸線</span>'}</td><td class="num">${k(v)}</td></tr>`}).join('')||'<tr><td colspan=3>尚無配置</td></tr>'}</tbody></table></div></div>`;
   const avail=[];
   DB.people.forEach(p=>{if(p.type==='contractor')return;
     let free=0;PLANB().forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal)free+=Math.max(0,cap-used)});
@@ -958,7 +962,9 @@ function vLines(){
     const{rem,used,pct,over}=lineBurn(b);
     const seats=lineSeats(b);
     const isPers=PERSCAT.includes(b.category);
-    const mapped=b.project_id==='ned'||DB.budget_lines.filter(x=>x.project_id===b.project_id).length===1;
+    const mapped=b.project_id==='ned'
+      ||DB.budget_lines.filter(x=>x.project_id===b.project_id).length===1
+      ||W.some(a=>a.project_id===b.project_id&&a.ned_line); // B13: 案內有具名歸線＝可判在座
     const projHasAlloc=W.some(a=>a.project_id===b.project_id);
     const vacant=rem>0&&isPers&&!b.ring_fence&&((mapped&&seats.length===0)||!projHasAlloc); // D10＋B12: 全案零配置＝各人事線皆空缺（新案）
     const st=over?['超','rejected']:vacant?['缺','pending']:['滿','approved'];
@@ -975,7 +981,15 @@ function vLines(){
       <td><span class="pill ${st[1]}">${st[0]}</span></td></tr>`;
   });
   if(!n)h+='<tr><td colspan=7>此篩選下沒有職位線</td></tr>';
-  h+=`</tbody></table></div><p class="note">「缺」＝有預算但目前起無人在座（＝rebudget 彈藥庫）；「超」＝已排＋7月草帳超過線剩餘（需 rebudget／修約）。ring-fence 線不列入「缺」。</p>`;
+  if(LF==='all'){ // B13: 各案未歸線配置提示（判不出歸屬的金額，不硬猜）
+    const un={};W.forEach(a=>{if(!a.ned_line&&+a.amount_twd>0){
+      const single=DB.budget_lines.filter(b=>b.project_id===a.project_id).length===1;
+      if(!single)un[a.project_id]=(un[a.project_id]||0)+ +a.amount_twd}});
+    Object.entries(un).forEach(([pr,v])=>{
+      h+=`<tr style="opacity:.7"><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</b></td>
+        <td colspan="5"><span style="color:var(--ink3)">未歸線配置 ${k(v)||'（金額隱藏）'}——尚無可靠線對映，不硬猜</span></td><td>—</td></tr>`});
+  }
+  h+=`</tbody></table></div><p class="note">「缺」＝有預算但目前起無人在座（＝rebudget 彈藥庫）；「超」＝已排＋7月草帳超過線剩餘（需 rebudget／修約）。ring-fence 線不列入「缺」。線的身分＝（案，線名）——同名線跨案永不合併。</p>`;
   return h;
 }
 // ---- B5: 單一職務頁（接力/並聯時間軸） ----
@@ -1013,7 +1027,7 @@ function vLine(keyEnc){
 window.frmSeat=(pr,name)=>{
   const now=nowMonth();
   const defFrom=M.includes(now)?now:M[0];
-  openForm('安排接替／加入：'+name,[
+  openForm('安排接替／加入：'+(SHORT[pr]||(prmap[pr]||{}).name||pr)+'｜'+name,[
     {id:'pid',label:'人員',type:'select',value:'',options:[['','（選擇人員）'],...DB.people.filter(p=>p.id!=='tara').map(p=>[p.id,(p.alias||p.name)+(p.provisional?'（暫定）':'')])]},
     {id:'from',label:'起月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
     {id:'to',label:'迄月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
@@ -1039,9 +1053,9 @@ window.frmSeat=(pr,name)=>{
       for(const m of months){
         const amt=Math.round(costOf(v.pid,m)/capOf(v.pid,m)*l);
         const exist=W.find(a=>a.person_id===v.pid&&a.month===m&&a.project_id===pr);
-        if(exist)await dbUpd('allocations','id=eq.'+exist.id,{loe_pct:l,amount_twd:amt,...(pr==='ned'?{ned_line:name}:{})});
+        if(exist)await dbUpd('allocations','id=eq.'+exist.id,{loe_pct:l,amount_twd:amt,ned_line:name});
         else await dbIns('allocations',{person_id:v.pid,month:m,project_id:pr,loe_pct:l,amount_twd:amt,
-          layer:'working',scenario_id:ACTIVE,provisional:(prmap[pr]||{}).provisional||false,...(pr==='ned'?{ned_line:name}:{})});
+          layer:'working',scenario_id:ACTIVE,provisional:(prmap[pr]||{}).provisional||false,ned_line:name});
       }
       await reload('草稿已排入 '+months.length+' 個月');return;
     }
@@ -1049,7 +1063,7 @@ window.frmSeat=(pr,name)=>{
       const amt=Math.round(costOf(v.pid,m)/capOf(v.pid,m)*l);
       await dbIns('edit_proposals',{author:localStorage.getItem('cr_author')||'admin',target_table:'allocations',action:'update',
         target_pk:{person_id:v.pid,month:m,project_id:pr},
-        payload:{loe_pct:l,amount_twd:amt,...(pr==='ned'?{ned_line:name}:{})},
+        payload:{loe_pct:l,amount_twd:amt,ned_line:name},
         note:'職務頁安排：'+name+'（'+ML[v.from]+'–'+ML[v.to]+'）'});
     }
     await reload('已送出 '+months.length+' 筆接替提案（修約頁套用後生效）');
