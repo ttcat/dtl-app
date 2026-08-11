@@ -138,6 +138,15 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出提案</button></div>
 </dialog>
 
+<dialog id="sealDlg">
+  <h3>🔒 觸及已送財報期間</h3>
+  <div id="sealMsg" style="color:var(--crit);font-size:13px;line-height:1.6;margin-bottom:10px"></div>
+  <div class="row"><span>修改原因*</span><input type="text" id="sealReason" style="width:180px" placeholder="必填"></div>
+  <div class="row"><span>輸入 YES 放行</span><input type="text" id="sealYes" style="width:180px" placeholder="YES"></div>
+  <p class="note" style="margin:6px 0 0">放行後會在稽核紀錄留下：誰、何時、哪些格、原因。</p>
+  <div class="acts"><button class="btn" id="sealCancel">取消</button><button class="btn primary" id="sealGo">放行修改</button></div>
+</dialog>
+
 <dialog id="formDlg">
   <h3 id="fdTitle"></h3>
   <div id="fdBody"></div>
@@ -227,6 +236,42 @@ const draftBanner=()=>{
     <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
     <button class="miniact" onclick="archiveScn()">封存草稿</button></p>`;
 };
+// ---- B15: 財報封印 ----
+let SEALS=[];
+function sealOf(pr,m){return SEALS.find(s=>s.project_id===pr&&s.period_start<=m&&m<=s.period_end)||null}
+const sealMark=(pr,m)=>{const s=sealOf(pr,m);return s?'🔒':''};
+const sealTip=(pr,m)=>{const s=sealOf(pr,m);return s?`&#10;🔒 已入「${esc(s.report_name)}」（${s.submitted_at} 送出）——此段已定`:''};
+function sealConfirm(hits,ctx){ // hits=[{pr,m,seal}]；回傳 Promise<{go,reason}>
+  return new Promise(res=>{
+    const dlg=document.getElementById('sealDlg');
+    document.getElementById('sealMsg').innerHTML=
+      `以下 ${hits.length} 格已入送出財報——修改將使系統與已送財報<b>不一致</b>：<br>`+
+      hits.slice(0,8).map(h=>`・${SHORT[h.pr]||h.pr} ${ML[h.m]||h.m}：「${esc(h.seal.report_name)}」（${h.seal.submitted_at} 送出）`).join('<br>')+
+      (hits.length>8?`<br>…共 ${hits.length} 格`:'');
+    document.getElementById('sealReason').value='';document.getElementById('sealYes').value='';
+    const done=v=>{dlg.close();res(v)};
+    document.getElementById('sealCancel').onclick=()=>done({go:false});
+    document.getElementById('sealGo').onclick=()=>{
+      const reason=document.getElementById('sealReason').value.trim();
+      if(document.getElementById('sealYes').value.trim()!=='YES'||!reason){
+        document.getElementById('sealMsg').innerHTML+='<br><b>需輸入 YES 且原因必填。</b>';return}
+      done({go:true,reason});
+    };
+    dlg.showModal();
+  });
+}
+async function sealGate(pairs,what){ // official 寫入前：檢查 (案,月) 是否觸及封印；擋→YES＋原因→audit
+  if(ACTIVE!==OFFICIAL)return true; // 草稿沙盒不攔（定案時另計）
+  const seen=new Set(),hits=[];
+  pairs.forEach(p=>{const key=p.pr+'|'+p.m;if(seen.has(key))return;seen.add(key);
+    const s=sealOf(p.pr,p.m);if(s)hits.push({pr:p.pr,m:p.m,seal:s})});
+  if(!hits.length)return true;
+  const r=await sealConfirm(hits,what);
+  if(!r.go)return false;
+  try{await dbIns('audit_log',{actor:ROLE.email,table_name:'official',row_pk:hits.map(h=>h.pr+':'+h.m).join(','),
+    action:'seal_override',before:null,after:{what,reason:r.reason,cells:hits.length}})}catch(e){}
+  return true;
+}
 // ---- B14: 月度快照——official 三表寫入的共用攔截門 ----
 const isSnap=s=>String(s.id||'').startsWith('snap_')||String(s.id||'').startsWith('msnap_');
 async function copyOfficialTo(id){
@@ -287,14 +332,33 @@ window.frmScn=()=>openForm('開新情境（複製正式版）',[
   localStorage.setItem('cr_scn',id);
   await reload('已開新情境「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
 });
-window.finalizeScn=()=>openForm('定案為正式版？（舊版歸檔、全團隊改看新版）',[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
+function scnSealedTouch(){ // 定案 diff 觸及的封印 (案,月)
+  const out=new Set();
+  const kf=a=>a.person_id+'|'+a.month+'|'+a.project_id;
+  const om={},dm={};
+  DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL).forEach(a=>om[kf(a)]=a);
+  W.forEach(a=>dm[kf(a)]=a);
+  new Set([...Object.keys(om),...Object.keys(dm)]).forEach(k=>{const o=om[k],d=dm[k];
+    if((o?+o.amount_twd:0)!==(d?+d.amount_twd:0)||((o&&+o.loe_pct)||0)!==((d&&+d.loe_pct)||0)){
+      const parts=k.split('|');if(sealOf(parts[2],parts[1]))out.add(parts[2]+'|'+parts[1])}});
+  const eo={},ed={};
+  EXP.forEach(e=>{const k=e.project_id+'|'+e.month;
+    if(e.scenario_id===OFFICIAL)eo[k]=(eo[k]||0)+ +e.amount_twd;
+    else if(e.scenario_id===ACTIVE)ed[k]=(ed[k]||0)+ +e.amount_twd});
+  new Set([...Object.keys(eo),...Object.keys(ed)]).forEach(k=>{
+    if((eo[k]||0)!==(ed[k]||0)){const p2=k.split('|');if(sealOf(p2[0],p2[1]))out.add(k)}});
+  return [...out];
+}
+window.finalizeScn=()=>{const sealed=scnSealedTouch();
+ return openForm('定案為正式版？（舊版歸檔、全團隊改看新版）'+(sealed.length?`⚠ 觸及已送財報期間 ${sealed.length} 格（${sealed.slice(0,4).map(kk=>{const p3=kk.split('|');return (SHORT[p3[0]]||p3[0])+(ML[p3[1]]||p3[1])}).join('、')}${sealed.length>4?'…':''}）——與已送財報將不一致`:''),[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
   if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
+  if(sealed.length)try{await dbIns('audit_log',{actor:ROLE.email,table_name:'official',row_pk:sealed.join(','),action:'seal_override',before:null,after:{what:'定案 '+ACTIVE,cells:sealed.length}})}catch(e){}
   await dbUpd('scenario_versions','id=eq.'+encodeURIComponent(OFFICIAL),{status:'archived'});
   await dbUpd('scenario_versions','id=eq.'+encodeURIComponent(ACTIVE),{status:'official',date:new Date().toISOString().slice(0,10)});
   try{await dbUpd('edit_proposals','status=eq.pending',{status:'needs_review'})}catch(e){} // 未處理提案標「需重新檢視」
   localStorage.setItem('cr_scn',ACTIVE);
   await reload('已定案——舊版已歸檔；未處理提案已標「需重新檢視」');
-});
+})};
 window.archiveScn=()=>openForm('封存這個草稿？（資料保留、可回看不可再編）',[{id:'ok',label:'輸入 YES 確認',placeholder:'YES'}],async v=>{
   if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
   await dbUpd('scenario_versions','id=eq.'+encodeURIComponent(ACTIVE),{status:'archived'});
@@ -396,6 +460,8 @@ window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].na
   const c=+v.cap;if(!(c>=0&&c<=100))throw new Error('容量 0–100');
   const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:costOf(pid,x),capacity:c}));
   if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份');
+  const sp=[];rows.forEach(r=>{W.filter(a=>a.person_id===pid&&a.month===r.month).forEach(a=>sp.push({pr:a.project_id,m:r.month}))});
+  if(!await sealGate(sp,'容量調整'))throw new Error('已取消（該月已入財報）');
   await ensureSnapshot('容量調整 '+pid);
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'capacity_change',note:'容量調整為 '+c+'%（'+ML[v.from]+' 起）'});
@@ -410,6 +476,8 @@ window.frmSalary=(pid,m)=>openForm('調薪：'+(pmap[pid].alias||pmap[pid].name)
   const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0) // 只調在編月份——調薪不是延長聘期（聘期用到職/離職設）
     .map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:c,capacity:capOf(pid,x)}));
   if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份——調薪只作用於已有薪資的月份；要延長聘期請用「設到職日」');
+  const sp=[];rows.forEach(r=>{W.filter(a=>a.person_id===pid&&a.month===r.month).forEach(a=>sp.push({pr:a.project_id,m:r.month}))});
+  if(!await sealGate(sp,'調薪'))throw new Error('已取消（該月已入財報）');
   await ensureSnapshot('調薪 '+pid);
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'salary_change',note:'月成本調整為 '+c+'（'+ML[v.from]+' 起）'});
@@ -430,6 +498,8 @@ window.frmDate=(pid,kind)=>openForm((kind==='departure'?'設定離職日：':'�
     else{if(mm<em)c=0;else if(mm===em)c=Math.round(base*(dim-d+1)/dim)}
     if(c!=null)rows.push({scenario_id:ACTIVE,person_id:pid,month:mm,cost:c,capacity:capOf(pid,mm)});
   });
+  const sp=[];rows.forEach(r=>{W.filter(a=>a.person_id===pid&&a.month===r.month).forEach(a=>sp.push({pr:a.project_id,m:r.month}))});
+  if(!await sealGate(sp,'到離職設定'))throw new Error('已取消（該月已入財報）');
   await ensureSnapshot((kind==='departure'?'離職日 ':'到職日 ')+pid);
   if(rows.length)await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.date,type:kind,
@@ -444,6 +514,7 @@ window.applyProposal=async id=>{
   const sal=costOf(t.person_id,t.month);const cap=capOf(t.person_id,t.month)||100;
   const amount=(x.payload&&x.payload.amount_twd!=null)?+x.payload.amount_twd:Math.round(sal/cap*l);
   await ensureSnapshot('套用提案 #'+id);
+  if(!await sealGate([{pr:t.project_id,m:t.month}],'套用提案 #'+id))return;
   const offW=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL);
   const exist=offW.find(a=>a.person_id===t.person_id&&a.month===t.month&&a.project_id===t.project_id);
   const extraNed=(x.payload&&x.payload.ned_line)?{ned_line:x.payload.ned_line}:{};
@@ -664,6 +735,7 @@ async function loadAll(){
       q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
       qAll('staffing?select=*&order=month'),q('scenario_versions?select=*')]);
     try{EXP=await qAll('expense_plan?select=*&order=id')}catch(e){EXP=[]}
+    try{SEALS=await q('report_seals?select=*&order=id')}catch(e){SEALS=[]}
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     SNOTES={};
@@ -679,6 +751,7 @@ async function loadAll(){
       qAll('staffing_public?select=*&order=month'),q('scenario_versions_public?select=*')]);
     SCNS=scnPub;
     try{EXP=await qAll('expense_plan?select=*&order=id')}catch(e){EXP=[]}
+    try{SEALS=await q('report_seals?select=*&order=id')}catch(e){SEALS=[]}
     proposals=props;
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
@@ -778,7 +851,7 @@ function vMaster(){
       const over=used>cap+0.5;
       const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
       const nt=noteOf('person',p.id,m);
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -857,7 +930,7 @@ function vPerson(pid){
       const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
       h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
-        title="${a?k(a.amount_twd):''}｜本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}｜${(a&&a.ned_line)?esc(a.ned_line):'未歸線'}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}</span></td>`;
+        title="${a?k(a.amount_twd):''}｜本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}｜${(a&&a.ned_line)?esc(a.ned_line):'未歸線'}${sealTip(pr,m)}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}${sealMark(pr,m)}</span></td>`;
     });
     h+='</tr>';
   });
@@ -938,7 +1011,7 @@ function vProject(pr){
         const tip=cell.map(e=>`${esc(e.item||e.category)} ${Math.round(e.amount_twd/1000)}k（${e.payer==='internal'?'存金':'grant'}）`).join('&#10;');
         h+=`<td><span class="cell num ${isAdmin()?'capEdit':''} ${cell.some(e=>e.payer==='internal')?'fY':''} ${m>FARM?'uFar':''}"
           ${isAdmin()?`onclick="frmExp('${pr}','${gk.replace(/'/g,"\\'")}','${m}')"`:''}
-          title="${tip||(isAdmin()?'點擊新增本月支出':'')}">${sum>0.5?kExp(sum):(isAdmin()?'＋':'·')}</span></td>`;
+          title="${tip||(isAdmin()?'點擊新增本月支出':'')}${sealTip(pr,m)}">${sum>0.5?kExp(sum):(isAdmin()?'＋':'·')}${sealMark(pr,m)}</span></td>`;
       });
       h+=`<td class="num"><b>${tot>0.5?kExp(tot):'—'}</b></td></tr>`;
     });
@@ -1115,6 +1188,21 @@ window.frmSeat=(pr,name)=>{
 // ---- B9: 提案總覽 ----
 function scnRowsOf(id){return DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===id)}
 window.toggScn=id=>{const el=document.getElementById('scnDet_'+id);if(el)el.style.display=el.style.display==='none'?'':'none'};
+window.frmSealReg=()=>openForm('登記已送財報（登記後不可改不可刪）',[
+  {id:'pr',label:'案*',type:'select',value:'ned',options:DB.projects.map(p=>[p.id,SHORT[p.id]||p.name])},
+  {id:'from',label:'期間起月*',type:'month'},
+  {id:'to',label:'期間迄月*',type:'month'},
+  {id:'name',label:'報告名稱*',placeholder:'例：NED 2025-0446 H1 財報'},
+  {id:'sub',label:'送出日*',type:'date'},
+  {id:'note',label:'備註'},
+],async v=>{
+  const f=monthInputToKey(v.from),t=monthInputToKey(v.to);
+  if(!v.pr||!f||!t||!v.name||!v.sub)throw new Error('案／期間／報告名稱／送出日皆必填');
+  if(t<f)throw new Error('迄月不可早於起月');
+  await dbIns('report_seals',{project_id:v.pr,period_start:f,period_end:t,
+    report_name:v.name,submitted_at:v.sub,sealed_by:ROLE.email,note:v.note||null});
+  await reload('已登記封印：'+v.name);
+});
 window.promoteProject=pr=>openForm('轉正式：'+((prmap[pr]||{}).name||pr)+'（虛線→實線，全站統計轉入正式帳面）',[
   {id:'ok',label:'輸入 YES 確認',placeholder:'YES'},
 ],async v=>{
@@ -1139,6 +1227,7 @@ window.frmExp=(pr,gk,m)=>{
   ],async v=>{
     const a=+v.amt;if(!(a>=0))throw new Error('金額需 ≥ 0');
     await ensureSnapshot('支出編輯 '+pr);
+    if(!await sealGate([{pr,m}],'支出編輯'))throw new Error('已取消（該月已入財報）');
     if(single)await dbUpd('expense_plan','id=eq.'+single.id,{item:v.item||single.item,amount_twd:a,payer:v.payer,note:'表單編輯'});
     else await dbIns('expense_plan',{scenario_id:ACTIVE,project_id:pr,line_id:lineId,month:m,
       category:cat,item:v.item||cat,payer:v.payer,amount_twd:a,note:'表單新增'});
@@ -1325,6 +1414,11 @@ function vAmend(){
   <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
   ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
   </tbody></table></div>
+  <h2>🔒 財報封印</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
+  ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——第一份送出當天請在此登記</td></tr>'}
+  </tbody></table></div>
+  <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
+  <span class="note" style="margin:0">登記後該期間各格出現 🔒；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
   <h2>匯率設定</h2><div class="tblwrap"><table><thead><tr><th>幣別</th><th>1 單位 ＝ TWD</th><th>生效日</th><th></th></tr></thead><tbody>
   <tr><td>USD</td><td class="num">${RATES.USD}</td><td class="num" rowspan="2" style="vertical-align:middle">${RATES.asof||'—'}</td><td rowspan="2" style="vertical-align:middle"><button class="hbtn" onclick="frmFx()">編輯</button></td></tr>
   <tr><td>EUR</td><td class="num">${RATES.EUR}</td></tr>
