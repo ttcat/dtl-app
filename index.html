@@ -289,14 +289,24 @@ async function recalcBenefits(scnId){
       const cost=+((STAFF[scnId+'|'+p.id+'|'+m]||{}).cost)||0;
       if(cost<=0)return;
       const e=baseMap[p.id+'|'+m];
+      // 依 DB 真值聚合該人月各案配置
+      const byPr={};
+      DB.allocations.forEach(a=>{if(a.layer==='working'&&a.scenario_id===scnId&&a.person_id===p.id&&a.month===m)
+        byPr[a.project_id]=(byPr[a.project_id]||0)+(+a.amount_twd||0)});
       let amt,est=false;
-      if(e&&Math.round(+e.c)===Math.round(cost)){amt=+e.b}
-      else{const r=+rate[m]||0;if(!r)return;amt=Math.round(cost*r);est=true}
-      const rows=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===scnId&&a.person_id===p.id&&a.month===m);
-      let alloc=0;rows.forEach(a=>alloc+=+a.amount_twd||0);
+      if(e&&Math.round(+e.c)===Math.round(cost)){
+        // 組成未變（±1 元）→ 直接沿用模型拆分值（零漂移基準）
+        const ea=e.a||{};let same=true;
+        new Set([...Object.keys(ea),...Object.keys(byPr)]).forEach(pr=>{
+          if(Math.abs((byPr[pr]||0)-(ea[pr]||0))>1)same=false});
+        if(same){Object.entries(e.s||{}).forEach(([pr,v])=>{const k=m+'|'+pr;tgt[k]=(tgt[k]||0)+ +v});return}
+        amt=+e.b; // 金額基準沿用、payer 依現配置即時分攤
+      }else if(!e&&p.benefits_eligible===false){return}
+      else{const r=+rate[m]||0;if(!r)return;amt=cost*r;est=true}
+      let alloc=0;Object.values(byPr).forEach(v=>alloc+=v);
       const gap=Math.max(0,cost-alloc);
       const add=(pr,w)=>{if(w<=0)return;const k=m+'|'+pr;tgt[k]=(tgt[k]||0)+amt*w/cost;if(est)estFlag[k]=true};
-      rows.forEach(a=>add(a.project_id,+a.amount_twd||0));
+      Object.entries(byPr).forEach(([pr,v])=>add(pr,v));
       add('internal',gap);
     });
   });
