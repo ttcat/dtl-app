@@ -66,6 +66,14 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
 .btn.primary{background:var(--fN);border-color:var(--fN);color:#fff}
 .mysum{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--fN);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13.5px;line-height:1.7}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+#login .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:26px}
+#login h2{margin:0 0 6px;font-size:17px}
+#login p{font-size:13px;color:var(--ink2);margin:0 0 16px}
+#login input[type=email],#login input[type=password]{width:100%;padding:9px 10px;font-size:14px;margin-bottom:10px}
+#login .btn{width:100%;padding:9px}
+#login .msg{font-size:13px;margin-top:12px;color:var(--good)}
+#login .msg.err{color:var(--crit)}
 @media(max-width:640px){.cell{min-width:34px;padding:2px 2px;font-size:11px}td,th{padding:4px 5px}main{padding:10px 8px}}
 </style>
 </head>
@@ -77,9 +85,24 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
     <a href="#master">總表</a><a href="#person">個人頁</a><a href="#project">專案頁</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" id="theme" title="切換主題">◐</button>
+    <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
   </nav>
 </header>
-<main id="app"><p class="banner"><span class="spin"></span> 從資料庫載入中…</p></main>
+<div id="login" style="display:none"><div class="box">
+  <div class="eyebrow">DTL · Control Room</div>
+  <h2>登入</h2>
+  <p>輸入你的工作信箱，我們會寄一封登入連結（僅限受邀成員）。</p>
+  <input type="email" id="lgEmail" placeholder="you@doublethinklab.org" autocomplete="email">
+  <button class="btn primary" id="lgSend">寄送登入連結</button>
+  <div id="lgMsg" class="msg" style="display:none"></div>
+  <div id="pwdBox" style="display:none;margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+    <p>（選填）為帳號設定密碼，之後也可用密碼登入：</p>
+    <input type="password" id="pwdNew" placeholder="新密碼（至少 8 碼）" autocomplete="new-password">
+    <button class="btn" id="pwdSave">設定密碼</button>
+    <button class="btn" id="pwdSkip">略過</button>
+  </div>
+</div></div>
+<main id="app" style="display:none"><p class="banner"><span class="spin"></span> 從資料庫載入中…</p></main>
 
 <dialog id="editDlg">
   <h3 id="edTitle">提案修改</h3>
@@ -103,7 +126,85 @@ const k=v=>(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k';
 const wan=v=>(v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬';
 let DB=null,pmap={},prmap={},W=[],pending={};
 
-async function q(path){const r=await fetch(SB+'/rest/v1/'+path,{headers:H});if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
+// ---------- auth (dependency-free GoTrue REST) ----------
+const AUTH=SB+'/auth/v1';
+let SES=null;
+function loadSes(){try{SES=JSON.parse(localStorage.getItem('sb_ses'))}catch(e){SES=null}}
+function saveSes(s){SES=s;if(s)localStorage.setItem('sb_ses',JSON.stringify(s));else localStorage.removeItem('sb_ses')}
+function parseHashTokens(){
+  if(!location.hash.includes('access_token='))return null;
+  const p=new URLSearchParams(location.hash.slice(1).replace(/^[^#?]*[?]/,''));
+  const p2=new URLSearchParams(location.hash.slice(1));
+  const g=k=>p2.get(k)||p.get(k);
+  const s={access_token:g('access_token'),refresh_token:g('refresh_token'),
+    expires_at:Date.now()+((+g('expires_in')||3600)-60)*1000,type:g('type')||''};
+  history.replaceState(null,'',location.pathname+'#master');
+  return s.access_token?s:null;
+}
+async function refreshSes(){
+  if(!SES||!SES.refresh_token)return false;
+  try{
+    const r=await fetch(AUTH+'/token?grant_type=refresh_token',{method:'POST',
+      headers:{apikey:KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:SES.refresh_token})});
+    if(!r.ok){saveSes(null);return false}
+    const j=await r.json();
+    saveSes({access_token:j.access_token,refresh_token:j.refresh_token,
+      expires_at:Date.now()+((j.expires_in||3600)-60)*1000,type:SES.type});
+    return true;
+  }catch(e){return false}
+}
+async function authFetch(url,opt){
+  opt=opt||{};
+  if(SES&&SES.expires_at<Date.now())await refreshSes();
+  if(!SES)throw new Error('未登入');
+  opt.headers={...(opt.headers||{}),apikey:KEY,Authorization:'Bearer '+SES.access_token};
+  let r=await fetch(url,opt);
+  if(r.status===401){
+    if(await refreshSes()){opt.headers.Authorization='Bearer '+SES.access_token;r=await fetch(url,opt)}
+    else{showLogin();throw new Error('登入已過期')}
+  }
+  return r;
+}
+function showLogin(){
+  saveSes(SES&&SES.access_token?null:SES);
+  document.getElementById('app').style.display='none';
+  document.getElementById('logout').style.display='none';
+  document.getElementById('login').style.display='block';
+}
+function showApp(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('logout').style.display='';
+}
+document.getElementById('lgSend').onclick=async()=>{
+  const email=document.getElementById('lgEmail').value.trim();
+  const msg=document.getElementById('lgMsg');msg.style.display='block';
+  if(!email){msg.className='msg err';msg.textContent='請輸入信箱';return}
+  msg.className='msg';msg.textContent='寄送中…';
+  const r=await fetch(AUTH+'/otp',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({email,create_user:false})});
+  if(r.ok){msg.textContent='✓ 已寄出——請到信箱點「登入連結」（找不到請看垃圾信）。'}
+  else{const j=await r.json().catch(()=>({}));msg.className='msg err';
+    msg.textContent='寄送失敗：'+(j.error_description||j.msg||r.status)+'（僅限受邀成員）'}
+};
+document.getElementById('pwdSave').onclick=async()=>{
+  const pw=document.getElementById('pwdNew').value;
+  const msg=document.getElementById('lgMsg');msg.style.display='block';
+  if(pw.length<8){msg.className='msg err';msg.textContent='密碼至少 8 碼';return}
+  const r=await authFetch(AUTH+'/user',{method:'PUT',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if(r.ok){document.getElementById('pwdBox').style.display='none';enterApp()}
+  else{msg.className='msg err';msg.textContent='設定失敗 '+r.status}
+};
+document.getElementById('pwdSkip').onclick=()=>{document.getElementById('pwdBox').style.display='none';enterApp()};
+document.getElementById('logout').onclick=async()=>{
+  try{await authFetch(AUTH+'/logout',{method:'POST'})}catch(e){}
+  saveSes(null);DB=null;location.hash='#master';showLogin();
+};
+function enterApp(){showApp();reload()}
+
+async function q(path){const r=await authFetch(SB+'/rest/v1/'+path);if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
 async function loadAll(){
   const [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals]=await Promise.all([
     q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
@@ -313,8 +414,8 @@ document.getElementById('edSave').onclick=async()=>{
     target_pk:{person_id:edCtx.pid,month:edCtx.m,project_id:edCtx.pr},
     payload:{loe_pct:l,amount_twd:Math.round(edCtx.sal/edCtx.cap*l)},
     note:document.getElementById('edNote').value.trim()||null};
-  const r=await fetch(SB+'/rest/v1/edit_proposals',{method:'POST',
-    headers:{...H,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)});
+  const r=await authFetch(SB+'/rest/v1/edit_proposals',{method:'POST',
+    headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)});
   document.getElementById('editDlg').close();
   if(!r.ok){alert('送出失敗 '+r.status);return}
   await reload('提案已送出');
@@ -345,7 +446,20 @@ document.getElementById('theme').onclick=()=>{
 };
 const th=localStorage.getItem('cr_theme');if(th&&th!=='auto')document.documentElement.dataset.theme=th;
 addEventListener('hashchange',route);
-reload();
+// ---------- boot ----------
+loadSes();
+const fresh=parseHashTokens();
+if(fresh){
+  saveSes(fresh);
+  if(fresh.type==='invite'||fresh.type==='recovery'||fresh.type==='signup'){
+    document.getElementById('login').style.display='block';
+    document.getElementById('lgEmail').style.display='none';
+    document.getElementById('lgSend').style.display='none';
+    document.querySelector('#login p').textContent='歡迎加入！你已透過邀請連結登入。';
+    document.getElementById('pwdBox').style.display='block';
+  }else enterApp();
+}else if(SES&&SES.access_token){enterApp()}
+else showLogin();
 </script>
 </body>
 </html>
