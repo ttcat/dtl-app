@@ -538,7 +538,9 @@ window.rejectProposal=id=>openForm('退回提案 #'+id,[{id:'note',label:'退回
 });
 
 // ---- B10: 情境化用人表（staffing）——薪資/容量一律由 ACTIVE 情境讀 ----
-let STAFF={},CTXSCN=null,EXP=[]; // CTXSCN：scnMetrics 臨時切換情境用
+let STAFF={},CTXSCN=null,EXP=[],AUD=[];
+let AUDF={t:'',a:''};
+window.setAudF=(k,v)=>{AUDF[k]=v;route()}; // CTXSCN：scnMetrics 臨時切換情境用
 function expInt(scnId,m){ // B11: 該情境該月的 internal 福利/非人事（派生＋支出計劃）
   let ben=0,np=0;
   EXP.forEach(e=>{if(e.scenario_id!==scnId||e.payer!=='internal'||e.month!==m)return;
@@ -751,6 +753,7 @@ async function loadAll(){
       qAll('staffing?select=*&order=month'),q('scenario_versions?select=*')]);
     try{EXP=await qAll('expense_plan?select=*&order=id')}catch(e){EXP=[]}
     try{SEALS=await q('report_seals?select=*&order=id')}catch(e){SEALS=[]}
+    try{AUD=await q('audit_log?select=*&order=id.desc&limit=200')}catch(e){AUD=[]}
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     SNOTES={};
@@ -1455,6 +1458,25 @@ function vAmend(){
   </tbody></table></div>
   <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
   <span class="note" style="margin:0">登記後該期間各格出現 🔒；修改需 YES＋原因並留稽核。登記不可改不可刪（送出是事實）。</span></div>
+  ${isAdmin()?(()=>{
+    const rows=AUD.filter(x=>(!AUDF.t||x.table_name===AUDF.t)&&(!AUDF.a||String(x.actor||'').includes(AUDF.a)));
+    const tables=[...new Set(AUD.map(x=>x.table_name))];
+    return `<h2>🧾 稽核紀錄（最近 ${AUD.length} 筆）</h2>
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+      <select onchange="setAudF('t',this.value)"><option value="">全部表</option>${tables.map(t=>`<option ${AUDF.t===t?'selected':''}>${t}</option>`).join('')}</select>
+      <input type="text" placeholder="篩操作者" value="${esc(AUDF.a)}" onchange="setAudF('a',this.value)" style="width:130px">
+      <span class="note" style="margin:0">DB 觸發器層全記（REST/psql 都逃不掉）；草稿沙盒與快照不記。</span></div>
+    <div class="tblwrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>時間</th><th>操作者</th><th>表</th><th>鍵</th><th>動作</th><th>變更摘要</th></tr></thead><tbody>
+    ${rows.slice(0,120).map(x=>{
+      let sum='';
+      try{
+        if(x.action==='UPDATE'&&x.before&&x.after){
+          const ks=Object.keys(x.after).filter(k2=>JSON.stringify(x.before[k2])!==JSON.stringify(x.after[k2])&&!['updated_at'].includes(k2));
+          sum=ks.slice(0,3).map(k2=>`${k2}:${JSON.stringify(x.before[k2])}→${JSON.stringify(x.after[k2])}`).join('；').slice(0,90);
+        }else if(x.after){sum=(x.after.reason||x.after.what||x.after.note||JSON.stringify(x.after)).slice(0,90)}
+      }catch(e){}
+      return `<tr><td class="num">${(x.at||'').slice(5,16).replace('T',' ')}</td><td>${(x.actor||'').split('@')[0]}</td><td>${x.table_name}</td><td class="num" style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${esc(x.row_pk||'')}</td><td><span class="pill ${x.action==='INSERT'?'approved':x.action==='UPDATE'?'pending':'rejected'}">${x.action}</span></td><td style="white-space:normal;font-size:11px">${esc(sum)}</td></tr>`}).join('')||'<tr><td colspan=6>無紀錄</td></tr>'}
+    </tbody></table></div>`})():''}
   <h2>匯率設定</h2><div class="tblwrap"><table><thead><tr><th>幣別</th><th>1 單位 ＝ TWD</th><th>生效日</th><th></th></tr></thead><tbody>
   <tr><td>USD</td><td class="num">${RATES.USD}</td><td class="num" rowspan="2" style="vertical-align:middle">${RATES.asof||'—'}</td><td rowspan="2" style="vertical-align:middle"><button class="hbtn" onclick="frmFx()">編輯</button></td></tr>
   <tr><td>EUR</td><td class="num">${RATES.EUR}</td></tr>
