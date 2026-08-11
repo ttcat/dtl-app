@@ -42,6 +42,9 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
 .fY{background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warn);font-weight:600}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
+.uFar{outline:1.5px dashed var(--fP);outline-offset:-1.5px;opacity:.82}
+.tblwrap th:first-child,.tblwrap td:first-child{position:sticky;left:0;background:var(--card);z-index:2}
+tr.click:hover td:first-child{background:var(--rail)}
 .introw td{border-top:2px solid var(--line);color:var(--crit);font-weight:600}
 #edErr,#fdErr{display:none;color:var(--crit);font-size:12.5px;margin-top:8px}
 .capEdit{cursor:pointer}.capEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
@@ -96,6 +99,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
     <a href="#master">總表</a><a href="#person">個人頁</a><a href="#project">專案頁</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" id="theme" title="切換主題">◐</button>
+    <select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select>
     <button class="hbtn" id="maskBtn" title="隱藏/顯示金額（分享螢幕用）" style="display:none">👁 金額</button>
     <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
   </nav>
@@ -137,17 +141,49 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 const SB='https://wunwsxapbksqrfthseqz.supabase.co';
 const KEY='sb_publishable_ekm9TwJ7pfZi3OjClaHT8Q_qyJGcPeA';
 const H={apikey:KEY,Authorization:'Bearer '+KEY};
-const M=['202608','202609','202610','202611','202612','202701','202702','202703','202704','202705','202706'];
-const ML={202608:'8月',202609:'9月',202610:'10月',202611:'11月',202612:'12月',202701:'1月',202702:'2月',202703:'3月',202704:'4月',202705:'5月',202706:'6月'};
+// ---- 動態時間軸（B4）：月份範圍由所有專案期間推算，起點固定 2026-08（資料起點） ----
+let M=[],ML={},FARM='999912';
+const mAdd=(m,n)=>{let y=+m.slice(0,4),mo=+m.slice(4)-1+n;y+=Math.floor(mo/12);mo=((mo%12)+12)%12;return y+String(mo+1).padStart(2,'0')};
+const nowMonth=()=>{const d=new Date();return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')};
+function buildTimeline(){
+  let end='202706';
+  (DB.projects||[]).forEach(p=>{
+    const mm=String(p.period||'').match(/,(\d{4})-(\d{2})-(\d{2})[\)\]]/);
+    if(!mm)return;
+    let em=mm[1]+mm[2];
+    if(String(p.period).trim().endsWith(')')&&mm[3]==='01')em=mAdd(em,-1); // 上界排除式
+    if(em>end)end=em;
+  });
+  (DB.allocations||[]).forEach(a=>{if(a.month>end)end=a.month});
+  M=[];let m='202608';
+  while(m<=end&&M.length<120){M.push(m);m=mAdd(m,1)}
+  ML={};M.forEach(x=>ML[x]=((x.slice(4)==='01'||x===M[0])?(+x.slice(0,4))+'年':'')+(+x.slice(4))+'月');
+  FARM=mAdd(nowMonth(),12); // 超過未來 12 個月 ＝ 遠期規劃假設
+}
+const PLANB=()=>M.filter(m=>m>='202608'&&m<='202701'); // Plan B 視窗（Aug–1月）
+window.jumpYear=y=>{const el=document.getElementById('mcol_'+y);if(el)el.scrollIntoView({behavior:'smooth',inline:'start',block:'nearest'})};
+const thead=()=>M.map(m=>`<th ${(m===M[0]||m.slice(4)==='01')?`id="mcol_${m.slice(0,4)}"`:''} ${m>FARM?'style="color:var(--ink3)"':''}>${ML[m]}</th>`).join('');
+const yearJump=()=>{const ys=[...new Set(M.map(m=>m.slice(0,4)))];
+  return ys.length>1?`<div style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><span class="note" style="margin:0">跳至：</span>${ys.map(y=>`<button class="hbtn num" onclick="jumpYear('${y}')">${y}</button>`).join('')}</div>`:''};
+const farNote=()=>M[M.length-1]>FARM?`<p class="note">⚠ 遠期提醒：${(+FARM.slice(0,4))}年${+FARM.slice(4)}月之後（超過未來 12 個月）為<b>規劃假設</b>，格子以虛線顯示；pipeline 專案另計信心度加權，非承諾數字。</p>`:'';
 const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'存金'};
 const PC={ned:'--fN',di:'--fDI',se:'--fSE',hrf:'--fH',otf:'--fO',ned2027:'--fP',pipeA:'--fP',pipeB:'--fP',internal:'--crit'};
 let ROLE=null;
 let MASK=localStorage.getItem('cr_mask')==='1';
 const isAdmin=()=>!!(ROLE&&ROLE.role==='admin');
 const money=s=>!isAdmin()?'':(MASK?'●●●':s);
-const k=v=>money((v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k');
-const wan=v=>money((v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬');
+// ---- 幣別切換（B4）：顯示換算，帳務仍以 TWD/原幣記 ----
+let CUR=localStorage.getItem('cr_cur')||'TWD';
+let RATES={USD:31.5,EUR:34,asof:''};
+const SYM={USD:'US$',EUR:'€'};
+const cvt=v=>CUR==='TWD'?+v:(+v)/(RATES[CUR]||1);
+const fmtC=v=>'≈'+SYM[CUR]+Math.round(cvt(v)).toLocaleString('en');
+const k=v=>money(CUR==='TWD'?(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k':fmtC(v));
+const wan=v=>money(CUR==='TWD'?(v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬':fmtC(v));
+const kTWD=v=>money((v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k'); // 原幣欄位用：不隨 CUR 換算
+const origMoney=(amount,curr)=>money(curr==='TWD'?(+amount/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k':(SYM[curr]||curr+' ')+(+amount).toLocaleString('en',{maximumFractionDigits:0}));
 const usd=v=>money('US$'+(+v).toLocaleString('en',{maximumFractionDigits:0}));
+window.setCur=v=>{CUR=v;localStorage.setItem('cr_cur',v);route()};
 let DB=null,pmap={},prmap={},W=[],pending={};
 let VIEW=localStorage.getItem('cr_view')||'load';
 window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
@@ -184,7 +220,6 @@ document.getElementById('fdSave').onclick=async()=>{
   catch(e){fdError(e.message);document.getElementById('fdSave').disabled=false}
 };
 const slug=s=>(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||('x'+Math.floor(Math.random()*1e5));
-const mKeys=M;
 function monthInputToKey(v){return v?v.replace('-',''):''} // '2026-11'→'202611'
 
 window.frmPerson=()=>openForm('新增同事',[
@@ -196,7 +231,7 @@ window.frmPerson=()=>openForm('新增同事',[
   if(!v.name)throw new Error('姓名必填');
   const jm=monthInputToKey(v.join);if(!jm)throw new Error('到職月必填');
   const cost=+v.cost||0;const id=slug(v.alias||v.name)+'_'+Math.floor(Math.random()*900+100);
-  const mc={};mKeys.forEach(m=>mc[m]=m>=jm?cost:0);
+  const mc={};M.forEach(m=>mc[m]=m>=jm?cost:0);
   await dbIns('people',{id,name:v.name,alias:v.alias||v.name,type:v.type,
     capacity_default:+v.cap||100,benefits_eligible:v.type!=='contractor',
     monthly_cost:mc,team:v.team||null,provisional:false,note:'B3 表單新增'});
@@ -406,6 +441,7 @@ function applyRoleNav(){
     if(!isAdmin()&&pg==='person'){a.textContent='我的頁面';a.href='#person/'+(ROLE.person_id||'')}
   });
   document.getElementById('maskBtn').style.display=isAdmin()?'':'none';
+  const cs=document.getElementById('curSel');cs.style.display=isAdmin()?'':'none';cs.value=CUR;
 }
 async function enterApp(){
   showApp();
@@ -433,7 +469,7 @@ async function loadAll(){
     let props=[];
     [people,allocations,projects,deliverables,contract_events,props,capov]=await Promise.all([
       q('people_public?select=*&order=id'),q('allocations_public?select=*&limit=3000'),
-      q('projects?select=id,name,status,provisional,confidence'),
+      q('projects?select=id,name,status,provisional,confidence,period'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('edit_proposals_public?select=*&order=id.desc&limit=100'),
       q('capacity_overrides?select=*')]);
@@ -446,6 +482,9 @@ async function loadAll(){
   DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals,capov:capovMap};
   pmap=Object.fromEntries(people.map(p=>[p.id,p]));
   prmap=Object.fromEntries(projects.map(p=>[p.id,p]));
+  buildTimeline();
+  const fr=settings.fx_rates;
+  if(fr){RATES.USD=+fr.usd||RATES.USD;RATES.EUR=+fr.eur||RATES.EUR;RATES.asof=fr.asof||''}
   W=allocations.filter(a=>a.layer==='working');
   pending={};
   proposals.filter(x=>x.status==='pending'&&x.target_table==='allocations').forEach(x=>{
@@ -465,10 +504,12 @@ function lossRange(){
   return wan(base)+'–'+wan(base+q*0.85);
 }
 function vMaster(){
-  let provAmt=0;W.forEach(a=>{if(a.provisional)provAmt+=+a.amount_twd||0});
+  let provAmt=0,provWt=0;
+  W.forEach(a=>{if(a.provisional){const v=+a.amount_twd||0;provAmt+=v;
+    const c=prmap[a.project_id]&&prmap[a.project_id].confidence;provWt+=v*(c!=null?+c:1)}});
   let unalloc=0;
   DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
-    M.slice(0,6).forEach(m=>{const{used,cap,active}=loeOf(p.id,m);if(active&&used<cap-1)unalloc++})});
+    PLANB().forEach(m=>{const{used,cap,active}=loeOf(p.id,m);if(active&&used<cap-1)unalloc++})});
   const openGates=DB.gates.filter(g=>g.status==='open').length;
   const nProp=DB.proposals.filter(x=>x.status==='pending').length;
   const commonCards=`<div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
@@ -478,7 +519,7 @@ function vMaster(){
      const c1=hd&&+hd.fy2026_loss_best
        ?`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
-     return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算</div></div>
+     return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
   </div>
@@ -486,7 +527,8 @@ function vMaster(){
   ${isAdmin()&&VIEW==='fund'
     ?`<div class="legend"><span><b style="background:color-mix(in oklab,var(--good) 40%,transparent)"></b>全 grant 覆蓋</span><span><b style="background:color-mix(in oklab,var(--warn) 45%,transparent)"></b>部分存金（格內＝存金額）</span><span><b style="background:color-mix(in oklab,var(--crit) 45%,transparent)"></b>全存金/無資金</span><span><b style="border:2px solid var(--crit);background:transparent"></b>有薪無配置（雙重警報）</span></div>`
     :`<div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>`}
-  <div class="tblwrap"><table><thead><tr><th>人員</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
+  ${yearJump()}
+  <div class="tblwrap"><table><thead><tr><th>人員</th>${thead()}</tr></thead><tbody>`;
   const fund=isAdmin()&&VIEW==='fund';
   const intMonth={};M.forEach(m=>intMonth[m]=0);
   DB.people.forEach(p=>{
@@ -505,7 +547,7 @@ function vMaster(){
         else if(f.internal<=500){cls='fG';txt=Math.round(loeOf(p.id,m).used)}
         else if(f.internal>=f.sal-500||f.grant<=500){cls='fR';txt=k(f.internal)}
         else{cls='fY';txt=k(f.internal)}
-        h+=`<td><span class="cell num ${cls} ${prov?'uP':''}" title="${tip}">${txt}</span></td>`;
+        h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
         return;
       }
       const{used,cap,rows,active}=loeOf(p.id,m);
@@ -514,7 +556,7 @@ function vMaster(){
       const hasPend=rows.some(a=>pending[[p.id,m,a.project_id].join('|')]);
       const over=used>cap+0.5;
       const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -525,6 +567,7 @@ function vMaster(){
   h+=fund
     ?'<p class="note">資金視圖：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。</p>'
     :'<p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
+  h+=farNote();
   return h;
 }
 
@@ -566,7 +609,8 @@ function vPerson(pid){
     <span style="font-size:12px;color:var(--ink3)">${p.note||''}</span></div>`;
   h+=mySummary(pid);
   if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
-  h+=`<div class="tblwrap"><table><thead><tr><th>專案</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
+  h+=yearJump();
+  h+=`<div class="tblwrap"><table><thead><tr><th>專案</th>${thead()}</tr></thead><tbody>`;
   prjs.forEach(pr=>{
     const proj=prmap[pr];
     h+=`<tr><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
@@ -575,7 +619,7 @@ function vPerson(pid){
       const pd=pending[[pid,m,pr].join('|')];
       if(!a&&!pd){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
       const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
-      h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''}"
+      h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
         title="${a?k(a.amount_twd):''}${a&&a.ned_line?'｜'+a.ned_line:''}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}</span></td>`;
     });
@@ -594,7 +638,7 @@ function vPerson(pid){
     const free=Math.max(0,Math.round(cap-used));
     h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
   });
-  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>';
+  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>'+farNote();
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
   return h;
@@ -613,11 +657,11 @@ function vProject(pr){
     if(pr==='ned')W.forEach(a=>{if(a.project_id==='ned'&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}});
     h+=`<h2>預算線</h2><div class="tblwrap"><table><thead><tr><th>線</th><th>剩餘(原幣)</th><th>7月</th><th>8–1月已排</th><th>燒耗</th><th>標記</th></tr></thead><tbody>`;
     lines.forEach(b=>{
-      const rem=+b.remaining_orig*(b.currency==='USD'?(+proj.fx||31.5):1);
+      const rem=+b.remaining_orig*(b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||31.5):1);
       const jl=+b.july_draw_twd||0;const bd=billed[b.name]||0;
       const used=jl+bd;const pct=rem>0?Math.min(100,used/rem*100):0;
       h+=`<tr><td>${b.name}${b.provisional?'<span class="prov-badge">待文件</span>':''}</td>
-       <td class="num">${b.currency==='USD'?'US$'+(+b.remaining_orig).toLocaleString('en',{maximumFractionDigits:0}):k(+b.remaining_orig)}</td>
+       <td class="num" title="原幣顯示，不隨幣別切換換算">${origMoney(+b.remaining_orig,b.currency)}</td>
        <td class="num">${jl?k(jl):'—'}</td><td class="num">${bd?k(bd):'—'}</td>
        <td><div class="bar"><i class="${used>rem&&rem>0?'over':''}" style="width:${pct}%"></i></div></td>
        <td>${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:(used>rem&&rem>0?'<span class="pill pending">需 rebudget</span>':'')}</td></tr>`;
@@ -628,7 +672,7 @@ function vProject(pr){
   h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>`<tr class="click" onclick="location.hash='#person/${pid}'"><td>${pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid}</td><td class="num">${k(v)}</td></tr>`).join('')||'<tr><td colspan=2>尚無配置</td></tr>'}</tbody></table></div></div>`;
   const avail=[];
   DB.people.forEach(p=>{if(p.type==='contractor')return;
-    let free=0;M.slice(0,6).forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal)free+=Math.max(0,cap-used)});
+    let free=0;PLANB().forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal)free+=Math.max(0,cap-used)});
     if(free>5)avail.push([p,free])});
   h+=`<div><h2>還可以加進來的人</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–1月剩餘容量合計</th></tr></thead><tbody>${avail.sort((a,b)=>b[1]-a[1]).map(([p,f])=>`<tr class="click" onclick="location.hash='#person/${p.id}'"><td>${p.alias||p.name}${p.provisional?'<span class="prov-badge">暫定</span>':''}</td><td class="num">${Math.round(f)}%·月</td></tr>`).join('')||'<tr><td colspan=2>全員滿載——這正是 Plan B 的設計狀態</td></tr>'}</tbody></table></div></div></div>`;
   return h;
@@ -654,11 +698,25 @@ function vAmend(){
   <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
   ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
   </tbody></table></div>
+  <h2>匯率設定</h2><div class="tblwrap"><table><thead><tr><th>幣別</th><th>1 單位 ＝ TWD</th><th>生效日</th><th></th></tr></thead><tbody>
+  <tr><td>USD</td><td class="num">${RATES.USD}</td><td class="num" rowspan="2" style="vertical-align:middle">${RATES.asof||'—'}</td><td rowspan="2" style="vertical-align:middle"><button class="hbtn" onclick="frmFx()">編輯</button></td></tr>
+  <tr><td>EUR</td><td class="num">${RATES.EUR}</td></tr>
+  </tbody></table></div><p class="note">匯率僅影響顯示換算（≈），帳務與資料庫仍以 TWD／原幣記。</p>
   <h2>決策日誌</h2><div class="tblwrap"><table><tbody>
   ${DB.decisions.map(d=>`<tr><td class="num">${d.id}</td><td class="num">${d.date}</td><td>${d.title}</td></tr>`).join('')}
   </tbody></table></div>`;
   return h;
 }
+window.frmFx=()=>openForm('編輯顯示匯率（TWD 基準）',[
+  {id:'usd',label:'1 USD ＝ TWD',type:'number',value:RATES.USD},
+  {id:'eur',label:'1 EUR ＝ TWD',type:'number',value:RATES.EUR},
+  {id:'asof',label:'生效日',type:'date',value:RATES.asof||''},
+],async v=>{
+  const u=+v.usd,e=+v.eur;
+  if(!(u>0&&e>0))throw new Error('匯率需為正數');
+  await dbIns('settings?on_conflict=key',{key:'fx_rates',value:{usd:u,eur:e,asof:v.asof||null}},'');
+  await reload('匯率已更新');
+});
 
 // ---- proposal dialog ----
 let edCtx=null;
