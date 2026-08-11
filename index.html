@@ -351,7 +351,8 @@ window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].na
   {id:'cap',label:'新容量%',type:'number',value:capOf(pid,m)},
 ],async v=>{
   const c=+v.cap;if(!(c>=0&&c<=100))throw new Error('容量 0–100');
-  const rows=M.filter(x=>x>=v.from).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:costOf(pid,x),capacity:c}));
+  const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:costOf(pid,x),capacity:c}));
+  if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份');
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'capacity_change',note:'容量調整為 '+c+'%（'+ML[v.from]+' 起）'});
   await reload('容量已更新'+(ACTIVE!==OFFICIAL?'（僅此草稿）':''));
@@ -362,7 +363,9 @@ window.frmSalary=(pid,m)=>openForm('調薪：'+(pmap[pid].alias||pmap[pid].name)
   {id:'cost',label:'新月成本',type:'number',value:costOf(pid,m)},
 ],async v=>{
   const c=+v.cost;if(!(c>=0))throw new Error('月成本需 ≥ 0');
-  const rows=M.filter(x=>x>=v.from).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:c,capacity:capOf(pid,x)}));
+  const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0) // 只調在編月份——調薪不是延長聘期（聘期用到職/離職設）
+    .map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:c,capacity:capOf(pid,x)}));
+  if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份——調薪只作用於已有薪資的月份；要延長聘期請用「設到職日」');
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'salary_change',note:'月成本調整為 '+c+'（'+ML[v.from]+' 起）'});
   await reload('月成本已更新'+(ACTIVE!==OFFICIAL?'（僅此草稿的假設）':''));
