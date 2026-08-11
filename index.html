@@ -242,7 +242,9 @@ function vMaster(){
   const openGates=DB.gates.filter(g=>g.status==='open').length;
   const nProp=DB.proposals.filter(x=>x.status==='pending').length;
   let h=`<div class="cards">
-   <div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>
+   ${(()=>{const hd=DB.settings.headline;
+     if(hd&&+hd.fy2026_loss_best)return `<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${hd.swap_finalized||''}</div></div>`;
+     return `<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`})()}
    <div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
    <div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>
