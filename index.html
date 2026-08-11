@@ -101,7 +101,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
   <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
   <span id="status" class="note" style="margin:0"></span>
   <nav id="nav">
-    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">專案</a><a href="#lines">職務</a><a href="#amend">修約與閘門</a>
+    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">專案</a><a href="#lines">職務</a><a href="#scenarios">提案</a><a href="#amend">修約與閘門</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" id="theme" title="切換主題">◐</button>
     <select class="hbtn" id="scnSel" title="情境：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
@@ -195,7 +195,7 @@ let DB=null,pmap={},prmap={},W=[],pending={};
 let VIEW=localStorage.getItem('cr_view')||'load';
 window.setView=v=>{VIEW=v;localStorage.setItem('cr_view',v);route()};
 // ---- B6: 情境系統 ----
-let OFFICIAL='V8.1',ACTIVE='V8.1',SCNS=[],ROLEMAP={};
+let OFFICIAL='V8.1',ACTIVE='V8.1',SCNS=[],ROLEMAP={},SNOTES={};
 const myDrafts=()=>SCNS.filter(s=>s.status==='draft'&&ROLE&&s.owner===ROLE.email);
 const isAiOwner=email=>ROLEMAP[email]==='ai';
 const aiDrafts=()=>SCNS.filter(s=>s.status==='draft'&&isAiOwner(s.owner));
@@ -585,6 +585,8 @@ async function loadAll(){
       q('capacity_overrides?select=*'),q('scenario_versions?select=*')]);
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
+    SNOTES={};
+    try{(await qAll('scenario_notes?select=*&order=id')).forEach(n=>{(SNOTES[n.scenario_id]=SNOTES[n.scenario_id]||[]).push(n)})}catch(e){}
   }else{
     // member: 無金額視圖；不取任何含金額的表
     let props=[];
@@ -645,9 +647,13 @@ function vMaster(){
   const commonCards=`<div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
    <div class="card ${nProp?'prov':''}"><div class="l">待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>`;
   let h=`<div class="cards">
-   ${isAdmin()?(()=>{const hd=DB.settings.headline;
+   ${isAdmin()?(()=>{
+     const scnH=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;
+     const hd=scnH||DB.settings.headline;
      const c1=hd&&+hd.fy2026_loss_best
-       ?`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
+       ?`<div class="card"><div class="l">${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
+       :hd&&+hd.aug_jan_internal
+       ?`<div class="card crit"><div class="l">${hd.label||'存金失血'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
      return c1+`<div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算${provWt&&!MASK?'｜信心度加權 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
@@ -962,6 +968,60 @@ window.frmSeat=(pr,name)=>{
     await reload('已送出 '+months.length+' 筆接替提案（修約頁套用後生效）');
   });
 };
+// ---- B9: 提案總覽 ----
+function scnRowsOf(id){return DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===id)}
+window.toggScn=id=>{const el=document.getElementById('scnDet_'+id);if(el)el.style.display=el.style.display==='none'?'':'none'};
+window.frmSNote=id=>openForm('新增提案備注',[
+  {id:'note',label:'備注',type:'textarea',placeholder:'例：這版對交付的影響、需要財務確認的點…'},
+],async v=>{
+  if(!v.note)throw new Error('備注不可空白');
+  await dbIns('scenario_notes',{scenario_id:id,author:ROLE.email,author_type:'human',note:v.note});
+  await reload('備注已加入');
+});
+window.goCompare=id=>{setScn(id);location.hash='#compare'};
+function scnCard(s,mx){
+  const ai=isAiOwner(s.owner);
+  const projs=[...new Set(scnRowsOf(s.id).map(a=>a.project_id))]
+    .map(pr=>`<span class="pill" style="${(prmap[pr]||{}).provisional?'border-style:dashed;':''}color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</span>`).join(' ');
+  const notes=SNOTES[s.id]||[];
+  const isOff=s.status==='official';
+  const canCompare=s.status==='draft'&&(myDrafts().some(x=>x.id===s.id)||aiDrafts().some(x=>x.id===s.id));
+  let h=`<tr class="click" onclick="toggScn('${s.id}')" ${isOff?'style="background:color-mix(in oklab,var(--good) 8%,transparent)"':''}>
+    <td>${isOff?'📌':ai?'🤖':s.status==='archived'?'🗄':'🧪'} <b>${s.name||s.id}</b></td>
+    <td><span class="pill ${isOff?'approved':s.status==='draft'?'pending':'draft'}">${isOff?'正式版':s.status==='draft'?'提案中':'已歸檔'}</span></td>
+    <td>${ai?'🤖 AI':s.owner?('👤 '+s.owner.split('@')[0]):'—'}</td>
+    <td class="num">${s.date||''}</td>
+    <td class="num">${k(mx.total)||'—'}</td>
+    <td class="num" style="color:${mx.internal>500?'var(--crit)':'inherit'}">${mx.internal>500?k(mx.internal):'0'}</td>
+    <td class="num">${mx.over||'0'}</td>
+    <td>${projs||'—'}</td>
+    <td class="num">${notes.length||''}</td></tr>`;
+  h+=`<tr id="scnDet_${s.id}" style="display:none"><td colspan="9" style="white-space:normal">
+    ${s.rationale?`<div class="mysum" style="border-left-color:var(--fP);margin:8px 0">${ai?'🤖':'📝'} ${esc(s.rationale)}</div>`:''}
+    <div style="margin:6px 0">
+      ${canCompare?`<button class="miniact ok" onclick="event.stopPropagation();goCompare('${s.id}')">與正式版比較</button>`:''}
+      <button class="miniact" onclick="event.stopPropagation();frmSNote('${s.id}')">＋備注</button>
+    </div>
+    ${notes.length?`<div style="margin:6px 0">${notes.map(n=>`<p class="note" style="margin:4px 0">${n.author_type==='ai'?'🤖':'👤'} <b>${esc((n.author||'').split('@')[0])}</b> <span class="num">${(n.created_at||'').slice(0,16).replace('T',' ')}</span>——${esc(n.note)}</p>`).join('')}</div>`:'<p class="note">尚無備注。</p>'}
+  </td></tr>`;
+  return h;
+}
+function vScenarios(){
+  const head=`<thead><tr><th>提案/情境</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金失血</th><th>超容量</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
+  const act=[...SCNS].filter(s=>s.status!=='archived').sort((a,b)=>(a.status==='official'?-1:1)-(b.status==='official'?-1:1));
+  const arc=SCNS.filter(s=>s.status==='archived');
+  let h=`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金失血＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
+  <div class="tblwrap"><table>${head}<tbody>`;
+  act.forEach(s=>{h+=scnCard(s,scnMetrics(scnRowsOf(s.id)))});
+  h+='</tbody></table></div>';
+  if(arc.length){
+    h+=`<details style="margin-top:8px"><summary class="note" style="cursor:pointer">🗄 已歸檔（${arc.length}）——歷史可追溯</summary>
+      <div class="tblwrap"><table>${head}<tbody>`;
+    arc.forEach(s=>{h+=scnCard(s,scnMetrics(scnRowsOf(s.id)))});
+    h+='</tbody></table></div></details>';
+  }
+  return h;
+}
 // ---- B6: 情境比較 ----
 function scnMetrics(arr){
   const sv=W;W=arr;
@@ -984,10 +1044,15 @@ function vCompare(){
   const dTag=v=>v>500?`<span style="color:var(--crit)">▲${k(v)}</span>`:v<-500?`<span style="color:var(--good)">▼${k(-v)}</span>`:'—';
   const dN=v=>v>0?`<span style="color:var(--crit)">▲${v}</span>`:v<0?`<span style="color:var(--good)">▼${-v}</span>`:'—';
   const ai=isAiOwner(scn.owner);
+  const hl=s=>{const hd=(s||{}).headline;if(!hd)return '（無帳面標題）';
+    if(+hd.fy2026_loss_best)return (hd.label||'')+' '+wan(+hd.fy2026_loss_best)+'–'+wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best);
+    if(+hd.aug_jan_internal)return (hd.label||'')+' '+wan(+hd.aug_jan_internal);
+    return '（無帳面標題）'};
   let h=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <b>情境比較：</b><span class="pill">📌 ${offName}</span> vs <span class="pill" style="border-style:dashed">${ai?'🤖':'🧪'} ${scn.name||ACTIVE}</span>
     <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
     <a class="hbtn" href="#master" style="text-decoration:none">回總表</a></div>
+  <p class="note" style="margin:0 0 10px">帳面口徑：📌 ${hl(SCNS.find(s=>s.id===OFFICIAL))}　｜　${ai?'🤖':'🧪'} ${hl(scn)}</p>
   ${scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}`;
   h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>正式版</th><th>草稿</th><th>差異</th></tr></thead><tbody>
     <tr><td>存金合計（實，全時間軸）</td><td class="num">${k(mo.internal)||'0'}</td><td class="num">${k(md.internal)||'0'}</td><td class="num">${dTag(md.internal-mo.internal)}</td></tr>
@@ -1020,7 +1085,8 @@ function vCompare(){
   return h;
 }
 function vAmend(){
-  let h=`<h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
+  let h=`<p class="banner">本頁 Amendment 差異清單＝「<b>Plan B 提案</b>」相對 donor 核准版（approved 層）的修約項目；目前檢視情境：<b>${(SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE}</b>。</p>
+  <h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
   DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
   h+=`</tbody></table></div>
   <h2>待套用提案（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>提案人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
@@ -1128,7 +1194,7 @@ function route(){
   const parts=(location.hash||'#master').slice(1).split('/');
   let page=parts[0],arg=parts.slice(1).join('/');
   if(!isAdmin()){
-    if(['project','projects','lines','line','amend','compare'].includes(page)){
+    if(['project','projects','lines','line','amend','compare','scenarios'].includes(page)){
       document.getElementById('title').textContent='僅限管理者';
       document.getElementById('app').innerHTML='<p class="banner err">此頁僅管理者可見。</p>';
       return;
@@ -1138,11 +1204,12 @@ function route(){
   }
   const navPg=page==='project'?'projects':page==='line'?'lines':page;
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+navPg));
-  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',projects:'專案總覽',lines:'職務總覽',line:'職務頁',amend:'修約與閘門',compare:'情境比較'};
+  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'專案頁',projects:'專案總覽',lines:'職務總覽',line:'職務頁',amend:'修約與閘門',compare:'情境比較',scenarios:'提案總覽'};
   document.getElementById('title').textContent=T[page]||'總表';
   document.getElementById('app').innerHTML=(page==='compare'?'':draftBanner())+
     (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='projects'?vProjects()
-     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare():vMaster());
+     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare()
+     :page==='scenarios'?vScenarios():vMaster());
 }
 async function reload(msg){
   const st=document.getElementById('status');
