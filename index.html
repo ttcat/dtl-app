@@ -44,6 +44,8 @@ td.click{cursor:pointer} td.click:hover{background:var(--rail)}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
 .fN{border:2px solid var(--crit);font-weight:700;color:var(--crit)}
 .uFar{outline:1.5px dashed var(--fP);outline-offset:-1.5px;opacity:.82}
+.hasNote{position:relative}
+.hasNote::after{content:'';position:absolute;top:1.5px;right:1.5px;width:4px;height:4px;border-radius:50%;background:var(--fN)}
 th[id^=mcol_]{scroll-margin-left:150px}
 .tblwrap th:first-child,.tblwrap td:first-child{position:sticky;left:0;background:var(--card);z-index:2}
 tr.click:hover td:first-child{background:var(--rail)}
@@ -267,12 +269,14 @@ async function dbUpd(table,filter,obj){
   if(!r.ok)throw new Error(table+' 更新失敗 '+r.status);
 }
 let FD=null;
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 function openForm(title,fields,onsave){
   FD={fields,onsave};
   document.getElementById('fdTitle').textContent=title;
   document.getElementById('fdBody').innerHTML=fields.map(f=>{
     if(f.type==='select')return `<div class="row"><span>${f.label}</span><select id="fd_${f.id}" style="width:172px">${f.options.map(o=>`<option value="${o[0]}" ${String(o[0])===String(f.value)?'selected':''}>${o[1]}</option>`).join('')}</select></div>`;
-    return `<div class="row"><span>${f.label}</span><input id="fd_${f.id}" type="${f.type||'text'}" value="${f.value??''}" placeholder="${f.placeholder||''}" style="width:172px"></div>`;
+    if(f.type==='textarea')return `<div class="row" style="align-items:flex-start"><span>${f.label}</span><textarea id="fd_${f.id}" rows="5" placeholder="${esc(f.placeholder)}" style="width:200px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px">${esc(f.value)}</textarea></div>`;
+    return `<div class="row"><span>${f.label}</span><input id="fd_${f.id}" type="${f.type||'text'}" value="${esc(f.value)}" placeholder="${esc(f.placeholder)}" style="width:172px"></div>`;
   }).join('');
   const e=document.getElementById('fdErr');e.textContent='';e.style.display='none';
   document.getElementById('fdSave').disabled=false;
@@ -400,6 +404,27 @@ function zeroNote(pid,m){ // '—' 格的事件註記
     if(e.type==='departure'&&m>em)return w+e.date+' 離職';
     if(e.type!=='departure'&&m<em)return w+e.date+' 到職';}
   return '';
+}
+// ---- B7: 逐月備注（工作重點；正式資料，不分情境） ----
+let NOTES={};
+const noteOf=(scope,id,m)=>NOTES[scope+'|'+id+'|'+m]||'';
+window.frmNote=(scope,id,m)=>{
+  const cur=noteOf(scope,id,m);
+  const who=scope==='person'?(pmap[id]?(pmap[id].alias||pmap[id].name):id):((prmap[id]||{}).name||id);
+  openForm('當月重點：'+who+' · '+(ML[m]||m),[
+    {id:'note',label:'重點/產出',type:'textarea',value:cur,placeholder:'這個月的工作重點、應有產出（同事看得到）'},
+  ],async v=>{
+    await dbIns('month_notes?on_conflict=scope,scope_id,month',
+      {scope,scope_id:id,month:m,note:v.note||'',updated_by:ROLE.email,updated_at:new Date().toISOString()},'');
+    await reload('備注已儲存');
+  });
+};
+function noteCell(scope,id,m){
+  const nt=noteOf(scope,id,m);
+  const shown=nt?(nt.length>8?nt.slice(0,8)+'…':nt):(isAdmin()?'＋':'·');
+  const cls=isAdmin()?'capEdit':'';
+  return `<td><span class="cell ${cls}" style="font-size:11px;${nt?'':'color:var(--ink3)'};max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+    ${isAdmin()?`onclick="frmNote('${scope}','${id}','${m}')"`:''} title="${esc(nt)||(isAdmin()?'點擊編輯當月重點':'')}">${esc(shown)}</span></td>`;
 }
 // ---- B5: 職務線 ↔ 在座者 對映 ----
 function lineAllocs(pr,name){
@@ -558,6 +583,7 @@ async function loadAll(){
       q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200'),
       q('capacity_overrides?select=*'),q('scenario_versions?select=*')]);
     try{ROLEMAP=Object.fromEntries((await q('user_roles?select=email,role')).map(r=>[r.email,r.role]))}catch(e){ROLEMAP={}}
+    try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
   }else{
     // member: 無金額視圖；不取任何含金額的表
     let props=[];
@@ -568,6 +594,7 @@ async function loadAll(){
       q('edit_proposals_public?select=*&order=id.desc&limit=100'),
       q('capacity_overrides?select=*')]);
     proposals=props;
+    try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
     people.forEach(p=>{if(!p.monthly_cost)p.monthly_cost={}});
   }
@@ -660,7 +687,8 @@ function vMaster(){
       const hasPend=rows.some(a=>pending[[p.id,m,a.project_id].join('|')]);
       const over=used>cap+0.5;
       const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
+      const nt=noteOf('person',p.id,m);
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過容量上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -744,6 +772,9 @@ function vPerson(pid){
     const free=Math.max(0,Math.round(cap-used));
     h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
   });
+  h+='</tr>';
+  h+=`<tr><td><b>📝 當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>`;
+  M.forEach(m=>{h+=noteCell('person',pid,m)});
   h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）'+(isAdmin()?'；容量列點格可自某月起調整；離職/到職經上方按鈕設定（按日比例、事件留痕、不實刪）':'')+'。</p>'+farNote();
   const ds=DB.deliverables.filter(d=>d.owner===pid);
   if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
@@ -775,6 +806,9 @@ function vProject(pr){
     });
     h+='</tbody></table></div>';
   }
+  h+=`<h2>📝 逐月重點（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>—</th>${thead()}</tr></thead><tbody>
+    <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
+  </tbody></table></div>`;
   const roster={};W.forEach(a=>{if(a.project_id===pr)roster[a.person_id]=(roster[a.person_id]||0)+ +a.amount_twd});
   h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>`<tr class="click" onclick="location.hash='#person/${pid}'"><td>${pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid}</td><td class="num">${k(v)}</td></tr>`).join('')||'<tr><td colspan=2>尚無配置</td></tr>'}</tbody></table></div></div>`;
   const avail=[];
