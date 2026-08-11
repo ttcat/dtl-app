@@ -888,7 +888,7 @@ function vMaster(){
   }
   h+='</tbody></table></div>';
   h+=fund
-    ?`<p class="note">資金視圖（資金水位）：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&+hd.aug_jan_internal))return '';
+    ?`<p class="note">資金視圖（資金水位）：格色＝payer 組成；🟡/🔴 格內數字＝該月存金額；⬜粗紅框＝有薪資但無任何配置。遮蔽開啟時金額顯示 ●●● 但顏色保留。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&hd.aug_jan_internal!=null))return '';
       const AJ=M.filter(m=>m>='202608'&&m<='202701');
       const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
       const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
