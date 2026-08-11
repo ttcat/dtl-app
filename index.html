@@ -188,6 +188,7 @@ const fmtC=v=>'≈'+SYM[CUR]+Math.round(cvt(v)).toLocaleString('en');
 const k=v=>money(CUR==='TWD'?(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k':fmtC(v));
 const wan=v=>money(CUR==='TWD'?(v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬':fmtC(v));
 const kTWD=v=>money((v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k'); // 原幣欄位用：不隨 CUR 換算
+const kExp=v=>MASK&&isAdmin()?'●●●':(CUR==='TWD'?(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k':fmtC(v)); // 業務費：member 可見（CEO 裁定不保密），admin 遮蔽仍有效
 const origMoney=(amount,curr)=>money(curr==='TWD'?(+amount/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k':(SYM[curr]||curr+' ')+(+amount).toLocaleString('en',{maximumFractionDigits:0}));
 const usd=v=>money('US$'+(+v).toLocaleString('en',{maximumFractionDigits:0}));
 window.setCur=v=>{CUR=v;localStorage.setItem('cr_cur',v);route()};
@@ -585,7 +586,7 @@ function applyRoleNav(){
   const links=document.querySelectorAll('nav a');
   links.forEach(a=>{
     const pg=a.hash.slice(1).split('/')[0];
-    if(!isAdmin()&&['project','projects','lines','line','amend'].includes(pg))a.style.display='none';
+    if(!isAdmin()&&['lines','line','amend'].includes(pg))a.style.display='none'; // B12: member 可看專案頁（業務費不保密）
     if(!isAdmin()&&pg==='person'){a.textContent='我的頁面';a.href='#person/'+(ROLE.person_id||'')}
   });
   document.getElementById('maskBtn').style.display=isAdmin()?'':'none';
@@ -624,13 +625,15 @@ async function loadAll(){
     try{(await qAll('scenario_notes?select=*&order=id')).forEach(n=>{(SNOTES[n.scenario_id]=SNOTES[n.scenario_id]||[]).push(n)})}catch(e){}
   }else{
     // member: 無金額視圖；不取任何含金額的表
-    let props=[];
-    [people,allocations,projects,deliverables,contract_events,props,staffRows]=await Promise.all([
+    let props=[],scnPub=[];
+    [people,allocations,projects,deliverables,contract_events,props,staffRows,scnPub]=await Promise.all([
       q('people_public?select=*&order=id'),qAll('allocations_public?select=*&order=id'),
       q('projects?select=id,name,status,provisional,confidence,period'),
       q('deliverables?select=*'),q('contract_events?select=*&order=date'),
       q('edit_proposals_public?select=*&order=id.desc&limit=100'),
-      qAll('staffing_public?select=*&order=month')]);
+      qAll('staffing_public?select=*&order=month'),q('scenario_versions_public?select=*')]);
+    SCNS=scnPub;
+    try{EXP=await qAll('expense_plan?select=*&order=id')}catch(e){EXP=[]}
     proposals=props;
     try{NOTES=Object.fromEntries((await qAll('month_notes?select=*&order=id')).map(n=>[n.scope+'|'+n.scope_id+'|'+n.month,n.note]))}catch(e){NOTES={}}
     budget_lines=[];amendment_items=[];decisions=[];gates=[];settingsRows=[];
@@ -644,9 +647,9 @@ async function loadAll(){
   buildTimeline();
   const fr=settings.fx_rates;
   if(fr){RATES.USD=+fr.usd||RATES.USD;RATES.EUR=+fr.eur||RATES.EUR;RATES.asof=fr.asof||''}
-  SCNS=scnRows;
+  if(isAdmin())SCNS=scnRows;
+  OFFICIAL=(SCNS.find(s=>s.status==='official')||{id:'V8.1'}).id;
   if(isAdmin()){
-    OFFICIAL=(SCNS.find(s=>s.status==='official')||{id:'V8.1'}).id;
     const saved=localStorage.getItem('cr_scn');
     ACTIVE=(saved&&(saved===OFFICIAL||myDrafts().some(s=>s.id===saved)||aiDrafts().some(s=>s.id===saved)))?saved:OFFICIAL;
     W=allocations.filter(a=>a.layer==='working'&&a.scenario_id===ACTIVE);
@@ -848,7 +851,8 @@ function vProject(pr){
   const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（暫定）':''}</option>`).join('')}</select>`;
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
    <a href="#projects" class="hbtn" style="text-decoration:none">≡ 專案總覽</a>${sel}
-   ${proj.provisional?`<span class="prov-badge">pipeline${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
+   ${proj.provisional?`<span class="prov-badge">${proj.status}·暫定${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
+   ${isAdmin()&&proj.provisional?`<button class="hbtn" style="color:var(--good);border-color:var(--good)" onclick="promoteProject('${pr}')">✓ 轉正式</button>`:''}
    ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增專案</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增職位線</button>`:''}
    <span style="font-size:12px;color:var(--ink3)">${proj.note||''}</span></div>`;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
@@ -867,6 +871,33 @@ function vProject(pr){
        <td>${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:(used>rem&&rem>0?'<span class="pill pending">需 rebudget</span>':'')}</td></tr>`;
     });
     h+='</tbody></table></div>';
+  }
+  // ---- B12: 業務費（非人事）逐月明細——member 可見，admin 點格可編 ----
+  const expRows=EXP.filter(e=>e.scenario_id===ACTIVE&&e.project_id===pr);
+  const grpKey=e=>e.line_id||('cat|'+e.category);
+  const grps={};expRows.forEach(e=>{(grps[grpKey(e)]=grps[grpKey(e)]||[]).push(e)});
+  const npLines=DB.budget_lines.filter(b=>b.project_id===pr&&!['Salaries','Personnel','Personnel+Fringe'].includes(b.category));
+  npLines.forEach(b=>{if(!grps[b.id])grps[b.id]=[]});
+  const gkeys=Object.keys(grps);
+  if(gkeys.length||isAdmin()){
+    h+=`<h2>💼 業務費逐月明細（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>預算線／類別</th>${thead()}<th>合計</th></tr></thead><tbody>`;
+    gkeys.forEach(gk=>{
+      const rows=grps[gk];
+      const bl=gk.startsWith('cat|')?null:DB.budget_lines.find(b=>b.id===gk);
+      const label=bl?bl.name:(rows[0]?rows[0].category:gk.slice(4))+'（未歸線）';
+      let tot=0;
+      h+=`<tr><td><b>${esc(label)}</b>${bl&&bl.ring_fence?`<span class="pill">${bl.ring_fence} 不動</span>`:''}</td>`;
+      M.forEach(m=>{
+        const cell=rows.filter(e=>e.month===m);
+        const sum=cell.reduce((s,e)=>s+ +e.amount_twd,0);tot+=sum;
+        const tip=cell.map(e=>`${esc(e.item||e.category)} ${Math.round(e.amount_twd/1000)}k（${e.payer==='internal'?'存金':'grant'}）`).join('&#10;');
+        h+=`<td><span class="cell num ${isAdmin()?'capEdit':''} ${cell.some(e=>e.payer==='internal')?'fY':''} ${m>FARM?'uFar':''}"
+          ${isAdmin()?`onclick="frmExp('${pr}','${gk.replace(/'/g,"\\'")}','${m}')"`:''}
+          title="${tip||(isAdmin()?'點擊新增本月支出':'')}">${sum>0.5?kExp(sum):(isAdmin()?'＋':'·')}</span></td>`;
+      });
+      h+=`<td class="num"><b>${tot>0.5?kExp(tot):'—'}</b></td></tr>`;
+    });
+    h+=`</tbody></table></div><p class="note">金額＝該線該月支出計劃合計（黃底＝含存金 payer）；hover 看逐筆；${isAdmin()?'點格編輯（單筆直接改、多筆為追加）；':''}業務費依 CEO 裁定為同事可見。</p>`;
   }
   h+=`<h2>📝 逐月重點（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>—</th>${thead()}</tr></thead><tbody>
     <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">可點編</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
@@ -1026,6 +1057,35 @@ window.frmSeat=(pr,name)=>{
 // ---- B9: 提案總覽 ----
 function scnRowsOf(id){return DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===id)}
 window.toggScn=id=>{const el=document.getElementById('scnDet_'+id);if(el)el.style.display=el.style.display==='none'?'':'none'};
+window.promoteProject=pr=>openForm('轉正式：'+((prmap[pr]||{}).name||pr)+'（虛線→實線，全站統計轉入正式帳面）',[
+  {id:'ok',label:'輸入 YES 確認',placeholder:'YES'},
+],async v=>{
+  if(v.ok!=='YES')throw new Error('請輸入 YES 確認');
+  const before={provisional:true,status:(prmap[pr]||{}).status};
+  await dbUpd('projects','id=eq.'+pr,{provisional:false,status:'active'});
+  await dbUpd('budget_lines','project_id=eq.'+pr+'&provisional=eq.true',{provisional:false});
+  try{await dbIns('audit_log',{actor:ROLE.email,table_name:'projects',row_pk:pr,action:'promote',
+    before,after:{provisional:false,status:'active'}})}catch(e){}
+  await reload('已轉正式——'+((prmap[pr]||{}).name||pr));
+});
+window.frmExp=(pr,gk,m)=>{
+  if(isAdmin()&&ACTIVE!==OFFICIAL&&!canEditScn())return; // AI/他人草稿唯讀
+  const lineId=gk.startsWith('cat|')?null:gk;
+  const cat=gk.startsWith('cat|')?gk.slice(4):((DB.budget_lines.find(b=>b.id===gk)||{}).category||'其他');
+  const cell=EXP.filter(e=>e.scenario_id===ACTIVE&&e.project_id===pr&&e.month===m&&(e.line_id||('cat|'+e.category))===gk);
+  const single=cell.length===1?cell[0]:null;
+  openForm((single?'編輯':'新增')+'支出：'+(SHORT[pr]||pr)+' · '+(ML[m]||m)+(cell.length>1?`（既有 ${cell.length} 筆，將追加新筆）`:''),[
+    {id:'item',label:'項目說明',value:single?single.item:''},
+    {id:'amt',label:'金額(TWD)',type:'number',value:single?+single.amount_twd:''},
+    {id:'payer',label:'payer',type:'select',value:single?single.payer:'grant',options:[['grant','grant（計劃支付）'],['internal','internal（存金）']]},
+  ],async v=>{
+    const a=+v.amt;if(!(a>=0))throw new Error('金額需 ≥ 0');
+    if(single)await dbUpd('expense_plan','id=eq.'+single.id,{item:v.item||single.item,amount_twd:a,payer:v.payer,note:'表單編輯'});
+    else await dbIns('expense_plan',{scenario_id:ACTIVE,project_id:pr,line_id:lineId,month:m,
+      category:cat,item:v.item||cat,payer:v.payer,amount_twd:a,note:'表單新增'});
+    await reload('支出已儲存'+(ACTIVE!==OFFICIAL?'（僅此草稿）':''));
+  });
+};
 window.frmSNote=id=>openForm('新增提案備注',[
   {id:'note',label:'備注',type:'textarea',placeholder:'例：這版對交付的影響、需要財務確認的點…'},
 ],async v=>{
@@ -1282,7 +1342,7 @@ function route(){
   const parts=(location.hash||'#master').slice(1).split('/');
   let page=parts[0],arg=parts.slice(1).join('/');
   if(!isAdmin()){
-    if(['project','projects','lines','line','amend','compare','scenarios'].includes(page)){
+    if(['lines','line','amend','compare','scenarios'].includes(page)){
       document.getElementById('title').textContent='僅限管理者';
       document.getElementById('app').innerHTML='<p class="banner err">此頁僅管理者可見。</p>';
       return;
