@@ -283,8 +283,7 @@ async function recalcBenefits(scnId){
   const scn=SCNS.find(s=>s.id===scnId)||{};
   const baseMap=bb[scnId]||bb[scn.parent]||bb[OFFICIAL]||{};
   const tgt={},estFlag={};
-  DB.people.forEach(p=>{
-    if(p.benefits_eligible===false)return;
+  DB.people.forEach(p=>{ // 資格判定在內層：有模型基準者一律計（vac 亦然）；無基準且 flag=false 才跳過
     M.forEach(m=>{
       const cost=+((STAFF[scnId+'|'+p.id+'|'+m]||{}).cost)||0;
       if(cost<=0)return;
