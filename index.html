@@ -377,16 +377,7 @@ window.frmScn=()=>openForm('開新情境（複製正式版）',[
   const id='d_'+slug(v.name)+'_'+Math.floor(Math.random()*9000+1000);
   await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
     status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,note:'草稿（B6）'});
-  const rows=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL)
-    .map(a=>({person_id:a.person_id,month:a.month,project_id:a.project_id,loe_pct:a.loe_pct,
-      amount_twd:a.amount_twd,ned_line:a.ned_line,layer:'working',scenario_id:id,provisional:a.provisional}));
-  for(let i=0;i<rows.length;i+=200)await dbIns('allocations',rows.slice(i,i+200));
-  const strows=(DB.staffing||[]).filter(r=>r.scenario_id===OFFICIAL)
-    .map(r=>({scenario_id:id,person_id:r.person_id,month:r.month,cost:r.cost,capacity:r.capacity}));
-  for(let i=0;i<strows.length;i+=200)await dbIns('staffing',strows.slice(i,i+200));
-  const exrows=EXP.filter(e=>e.scenario_id===OFFICIAL)
-    .map(e=>({scenario_id:id,month:e.month,category:e.category,item:e.item,payer:e.payer,amount_twd:e.amount_twd,note:e.note}));
-  for(let i=0;i<exrows.length;i+=200)await dbIns('expense_plan',exrows.slice(i,i+200));
+  await copyOfficialTo(id); // 三表統一複製（B14 共用，含 project_id/line_id）
   localStorage.setItem('cr_scn',id);
   await reload('已開新情境「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
 });
