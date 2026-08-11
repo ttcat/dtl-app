@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DTL 控制室</title>
+<style>
+:root{--paper:#FCFCFB;--ink:#1C1E26;--ink2:#5B6070;--ink3:#9BA0AE;--card:#FFF;--line:#E7E7E4;--rail:#F4F4F1;
+--fN:#2563eb;--fDI:#d97706;--fSE:#db2777;--fH:#7c3aed;--fO:#0d9488;--fP:#64748b;
+--good:#15803d;--warn:#b45309;--crit:#dc2626;--focus:#2563eb}
+@media(prefers-color-scheme:dark){:root{--paper:#17181C;--ink:#E8E9ED;--ink2:#A6AAB6;--ink3:#6B7080;--card:#1F2127;--line:#2E3138;--rail:#1B1C21;--fN:#3b82f6;--fSE:#ec4899;--fH:#8b5cf6;--good:#4ade80;--warn:#fbbf24;--crit:#f87171}}
+:root[data-theme=dark]{--paper:#17181C;--ink:#E8E9ED;--ink2:#A6AAB6;--ink3:#6B7080;--card:#1F2127;--line:#2E3138;--rail:#1B1C21;--fN:#3b82f6;--fSE:#ec4899;--fH:#8b5cf6;--good:#4ade80;--warn:#fbbf24;--crit:#f87171}
+:root[data-theme=light]{--paper:#FCFCFB;--ink:#1C1E26;--ink2:#5B6070;--ink3:#9BA0AE;--card:#FFF;--line:#E7E7E4;--rail:#F4F4F1;--fN:#2563eb;--fSE:#db2777;--fH:#7c3aed;--good:#15803d;--warn:#b45309;--crit:#dc2626}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 "PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+.num{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;z-index:9;background:var(--paper);border-bottom:1px solid var(--line);padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.eyebrow{font-size:10px;letter-spacing:.18em;color:var(--ink3);text-transform:uppercase}
+h1{margin:0;font-size:16px;font-weight:700}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav a{padding:6px 12px;border-radius:6px;color:var(--ink2);text-decoration:none;font-size:13px}
+nav a.on{background:var(--ink);color:var(--paper);font-weight:600}
+.hbtn{border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+main{padding:16px 18px;max-width:1280px;margin:0 auto}
+h2{font-size:15px;margin:4px 0 10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.card .l{font-size:11px;color:var(--ink2)}.card .v{font-size:20px;font-weight:700}.card .s{font-size:11px;color:var(--ink3)}
+.card.prov{border-style:dashed}.card.crit .v{color:var(--crit)}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:16px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{font-size:11px;color:var(--ink2);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--card)}
+td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--rail)}
+.cell{display:inline-block;min-width:44px;text-align:center;border-radius:4px;padding:2px 4px;font-size:11.5px}
+.u100{background:color-mix(in oklab,var(--fN) 26%,transparent)} .u60{background:color-mix(in oklab,var(--fN) 14%,transparent)}
+.u0{background:color-mix(in oklab,var(--crit) 18%,transparent);color:var(--crit);font-weight:600}
+.uP{outline:1.5px dashed var(--fP);outline-offset:-1.5px}
+.uEdit{cursor:pointer} .uEdit:hover{outline:1.5px solid var(--focus);outline-offset:-1.5px}
+.pend{outline:1.5px dashed var(--warn);outline-offset:-1.5px;position:relative}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;border:1px solid var(--line)}
+.pill.draft{color:var(--ink2)} .pill.pending,.pill.pending_po,.pill.evidence_pending{color:var(--warn);border-color:var(--warn)}
+.pill.sent{color:var(--fN);border-color:var(--fN)} .pill.approved,.pill.applied{color:var(--good);border-color:var(--good)}
+.pill.rejected{color:var(--crit);border-color:var(--crit)}
+.prov-badge{font-size:10px;border:1px dashed var(--fP);color:var(--ink2);border-radius:4px;padding:0 5px;margin-left:6px}
+.bar{height:14px;background:var(--rail);border-radius:4px;position:relative;overflow:hidden;min-width:140px}
+.bar i{position:absolute;top:0;bottom:0;left:0;background:var(--fN);border-radius:4px 0 0 4px}
+.bar i.over{background:var(--crit)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin:0 0 10px}
+.legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+select,input[type=text],input[type=number]{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px}
+input:focus,select:focus,button:focus,a:focus{outline:2px solid var(--focus);outline-offset:1px}
+.note{font-size:12px;color:var(--ink3);margin:8px 0 14px}
+.banner{border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;margin-bottom:14px;background:var(--card);color:var(--ink2)}
+.banner.err{border-color:var(--crit);color:var(--crit)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--fN);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+dialog{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:18px;max-width:340px;width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h3{margin:0 0 10px;font-size:14px}
+dialog .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
+.btn.primary{background:var(--fN);border-color:var(--fN);color:#fff}
+.mysum{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--fN);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13.5px;line-height:1.7}
+@media(max-width:640px){.cell{min-width:34px;padding:2px 2px;font-size:11px}td,th{padding:4px 5px}main{padding:10px 8px}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
+  <span id="status" class="note" style="margin:0"></span>
+  <nav id="nav">
+    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#project">專案頁</a><a href="#amend">修約與閘門</a>
+    <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
+    <button class="hbtn" id="theme" title="切換主題">◐</button>
+  </nav>
+</header>
+<main id="app"><p class="banner"><span class="spin"></span> 從資料庫載入中…</p></main>
+
+<dialog id="editDlg">
+  <h3 id="edTitle">提案修改</h3>
+  <div class="row"><span>新 LOE %</span><input type="number" id="edLoe" min="0" max="100" step="5" style="width:90px"></div>
+  <div class="row"><span>換算金額</span><b class="num" id="edAmt">—</b></div>
+  <div class="row"><span>提案人</span><input type="text" id="edAuthor" placeholder="你的名字" style="width:150px"></div>
+  <div class="row"><span>備註</span><input type="text" id="edNote" placeholder="選填" style="width:150px"></div>
+  <p class="note" style="margin:6px 0 0">送出後為「待套用」提案（虛線標示），由財務/CEO 核可後寫入正式資料。</p>
+  <div class="acts"><button class="btn" id="edCancel">取消</button><button class="btn primary" id="edSave">送出提案</button></div>
+</dialog>
+
+<script>
+const SB='https://wunwsxapbksqrfthseqz.supabase.co';
+const KEY='sb_publishable_ekm9TwJ7pfZi3OjClaHT8Q_qyJGcPeA';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const M=['202608','202609','202610','202611','202612','202701','202702','202703','202704','202705','202706'];
+const ML={202608:'8月',202609:'9月',202610:'10月',202611:'11月',202612:'12月',202701:'1月',202702:'2月',202703:'3月',202704:'4月',202705:'5月',202706:'6月'};
+const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'存金'};
+const PC={ned:'--fN',di:'--fDI',se:'--fSE',hrf:'--fH',otf:'--fO',ned2027:'--fP',pipeA:'--fP',pipeB:'--fP',internal:'--crit'};
+const k=v=>(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'k';
+const wan=v=>(v/10000).toLocaleString('zh-TW',{maximumFractionDigits:0})+'萬';
+let DB=null,pmap={},prmap={},W=[],pending={};
+
+async function q(path){const r=await fetch(SB+'/rest/v1/'+path,{headers:H});if(!r.ok)throw new Error(path.split('?')[0]+' '+r.status);return r.json()}
+async function loadAll(){
+  const [people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settingsRows,proposals]=await Promise.all([
+    q('people?select=*&order=id'),q('projects?select=*'),q('budget_lines?select=*'),
+    q('allocations?select=*&limit=2000'),q('amendment_items?select=*&order=id'),
+    q('decisions?select=*&order=id'),q('gates?select=*&order=id'),
+    q('deliverables?select=*'),q('contract_events?select=*&order=date'),
+    q('settings?select=*'),q('edit_proposals?select=*&order=id.desc&limit=200')]);
+  const settings={};settingsRows.forEach(r=>settings[r.key]=(r.value&&'v' in r.value&&Object.keys(r.value).length===1)?r.value.v:r.value);
+  DB={people,projects,budget_lines,allocations,amendment_items,decisions,gates,deliverables,contract_events,settings,proposals};
+  pmap=Object.fromEntries(people.map(p=>[p.id,p]));
+  prmap=Object.fromEntries(projects.map(p=>[p.id,p]));
+  W=allocations.filter(a=>a.layer==='working');
+  pending={};
+  proposals.filter(x=>x.status==='pending'&&x.target_table==='allocations').forEach(x=>{
+    const t=x.target_pk||{};pending[[t.person_id,t.month,t.project_id].join('|')]=x;});
+}
+function personMonth(pid,m){return W.filter(a=>a.person_id===pid&&a.month===m)}
+function loeOf(pid,m){const p=pmap[pid];const rows=personMonth(pid,m);
+  const sal=(p.monthly_cost||{})[m]||0;if(!sal)return{used:0,cap:p.capacity_default,rows:[],sal:0};
+  const cap=p.capacity_default;
+  const used=rows.reduce((s,a)=>s+(a.loe_pct!=null?+a.loe_pct:a.amount_twd/sal*cap),0);
+  return{used,cap,rows,sal}}
+
+function lossRange(){
+  const s=DB.settings;
+  const base=(+s.h1_actual_total||0)+(+s.july_internal_provisional||0);
+  const q=Array.isArray(s.questionable_benefits)?s.questionable_benefits.reduce((a,x)=>a+(+x.twd||0),0):0;
+  return wan(base)+'–'+wan(base+q*0.85);
+}
+function vMaster(){
+  let provAmt=0;W.forEach(a=>{if(a.provisional)provAmt+=+a.amount_twd});
+  let unalloc=0;
+  DB.people.forEach(p=>{if(p.provisional&&p.id!=='newfo')return;
+    M.slice(0,6).forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal&&used<cap-1)unalloc++})});
+  const openGates=DB.gates.filter(g=>g.status==='open').length;
+  const nProp=DB.proposals.filter(x=>x.status==='pending').length;
+  let h=`<div class="cards">
+   <div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>
+   <div class="card"><div class="l">未配置容量（Aug–1月）</div><div class="v num">${unalloc} 格</div><div class="s">人×月有剩餘容量</div></div>
+   <div class="card prov"><div class="l">虛線（pipeline/待核准）金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」口徑，另計不混算</div></div>
+   <div class="card ${openGates?'crit':''}"><div class="l">開放中閘門</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>
+   <div class="card ${nProp?'prov':''}"><div class="l">待套用提案</div><div class="v num">${nProp}</div><div class="s">前端提案→財務/CEO 套用</div></div>
+  </div>
+  <div class="legend"><span><b style="background:var(--fN)"></b>NED</span><span><b style="background:var(--fDI)"></b>DI</span><span><b style="background:var(--fSE)"></b>SE</span><span><b style="background:var(--fH)"></b>HRF</span><span><b style="background:var(--fO)"></b>OTF</span><span><b style="background:var(--fP)"></b>虛線</span><span><b style="background:var(--crit)"></b>存金/缺配置</span><span>⏳＝提案待套用</span></div>
+  <div class="tblwrap"><table><thead><tr><th>人員</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
+  DB.people.forEach(p=>{
+    if(p.id==='tara')return;
+    h+=`<tr class="click" onclick="location.hash='#person/${p.id}'"><td><b>${p.alias||p.name}</b>${p.provisional?'<span class="prov-badge">暫定</span>':''}<br><span style="font-size:10.5px;color:var(--ink3)">${p.name}</span></td>`;
+    M.forEach(m=>{
+      const sal=(p.monthly_cost||{})[m]||0;
+      if(!sal){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+      const{used,cap,rows}=loeOf(p.id,m);
+      const prov=rows.some(a=>a.provisional);
+      const hasPend=rows.some(a=>pending[[p.id,m,a.project_id].join('|')]);
+      const cls=used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''}" title="${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}">${Math.round(used)}${hasPend?'⏳':''}</span></td>`;
+    });
+    h+='</tr>';
+  });
+  return h+'</tbody></table></div><p class="note">格內＝已配置 LOE%；紅＝有剩餘容量；虛線框＝暫定；⏳＝有待套用提案。點列→個人頁。</p>';
+}
+
+function mySummary(pid){
+  const p=pmap[pid];
+  const seg=(months)=>{ // describe stable mix over a month list
+    const mix={};let n=0;
+    months.forEach(m=>{const rows=personMonth(pid,m);if(!rows.length)return;n++;
+      rows.forEach(a=>{const key=a.project_id;mix[key]=(mix[key]||0)+(a.loe_pct!=null?+a.loe_pct:0)})});
+    if(!n)return null;
+    return Object.entries(mix).map(([pr,tot])=>({pr,avg:Math.round(tot/n)})).filter(x=>x.avg>0)
+      .sort((a,b)=>b.avg-a.avg);
+  };
+  const h1=seg(M.slice(0,6)),h2=seg(M.slice(6));
+  const fmt=list=>list?list.map(x=>`<b style="color:var(${PC[x.pr]||'--ink'})">${SHORT[x.pr]||x.pr} ${x.avg}%</b>${prmap[x.pr]&&prmap[x.pr].provisional?'<span class="prov-badge">暫定</span>':''}`).join('＋'):'（無配置）';
+  let extra='';
+  if(W.some(a=>a.person_id===pid&&a.project_id==='se'&&a.month==='202612'))
+    extra='<br><span style="color:var(--ink2)">12月：AIT(SE) 於 12/14 結案，該月按 12/1–14 與 12/15–31 分段計。</span>';
+  const pends=Object.values(pending).filter(x=>(x.target_pk||{}).person_id===pid).length;
+  return `<div class="mysum">📋 <b>${p.alias||p.name}</b> 的配置摘要——
+    <b>2026/8–2027/1</b>：${fmt(h1)}；<b>2027/2 起</b>：${fmt(h2)}。
+    每月所有專案加總不超過你的容量上限 ${p.capacity_default}%。虛線＝尚待簽約/核准的暫定安排。${extra}
+    ${pends?`<br><span style="color:var(--warn)">⏳ 你有 ${pends} 筆修改提案等待財務/CEO 套用。</span>`:''}
+  </div>`;
+}
+function vPerson(pid){
+  pid=pid&&pmap[pid]?pid:'jasper';const p=pmap[pid];
+  const sel=`<select onchange="location.hash='#person/'+this.value">${DB.people.map(x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${x.alias||x.name}（${x.name}）</option>`).join('')}</select>`;
+  const evs=DB.contract_events.filter(e=>e.person_id===pid);
+  const prjs=[...new Set(W.filter(a=>a.person_id===pid).map(a=>a.project_id))];
+  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
+    <span class="pill">${p.type==='employee'?'員工':p.type==='contractor'?'顧問':'時薪'}</span>
+    <span class="pill num">容量上限 ${p.capacity_default}%</span>
+    ${p.provisional?'<span class="prov-badge">暫定人員</span>':''}
+    <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
+    <span style="font-size:12px;color:var(--ink3)">${p.note||''}</span></div>`;
+  h+=mySummary(pid);
+  if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
+  h+=`<div class="tblwrap"><table><thead><tr><th>專案</th>${M.map(m=>`<th>${ML[m]}</th>`).join('')}</tr></thead><tbody>`;
+  prjs.forEach(pr=>{
+    const proj=prmap[pr];
+    h+=`<tr><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||proj.name}</b>${proj.provisional?'<span class="prov-badge">暫定</span>':''}</td>`;
+    M.forEach(m=>{
+      const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
+      const pd=pending[[pid,m,pr].join('|')];
+      if(!a&&!pd){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+      const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
+      h+=`<td><span class="cell num uEdit ${a&&a.provisional?'uP':''} ${pd?'pend':''}"
+        onclick="openEdit('${pid}','${m}','${pr}')"
+        title="${a?k(a.amount_twd):''}${a&&a.ned_line?'｜'+a.ned_line:''}${pd?'｜提案中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}</span></td>`;
+    });
+    h+='</tr>';
+  });
+  h+=`<tr><td><b>剩餘容量</b></td>`;
+  M.forEach(m=>{
+    const sal=(p.monthly_cost||{})[m]||0;
+    if(!sal){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+    const{used,cap}=loeOf(pid,m);const free=Math.max(0,Math.round(cap-used));
+    h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
+  });
+  h+='</tr></tbody></table></div><p class="note">點任一格提案修改 LOE（送出後為虛線待套用，不直接改正式資料）。</p>';
+  const ds=DB.deliverables.filter(d=>d.owner===pid);
+  if(ds.length)h+=`<h2>對應交付</h2><div class="tblwrap"><table><thead><tr><th>交付</th><th>案</th><th>期限</th><th>決策</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.title}</td><td>${SHORT[d.project_id]||d.project_id}</td><td class="num">${d.due||''}</td><td><span class="pill">${d.decision||''}</span></td></tr>`).join('')}</tbody></table></div>`;
+  return h;
+}
+
+function vProject(pr){
+  pr=pr&&prmap[pr]?pr:'ned';const proj=prmap[pr];
+  const sel=`<select onchange="location.hash='#project/'+this.value">${DB.projects.map(x=>`<option value="${x.id}" ${x.id===pr?'selected':''}>${x.name}${x.provisional?'（暫定）':''}</option>`).join('')}</select>`;
+  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
+   ${proj.provisional?`<span class="prov-badge">pipeline${proj.confidence?' · 信心度 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
+   <span style="font-size:12px;color:var(--ink3)">${proj.note||''}</span></div>`;
+  const lines=DB.budget_lines.filter(b=>b.project_id===pr);
+  if(lines.length){
+    const billed={};
+    if(pr==='ned')W.forEach(a=>{if(a.project_id==='ned'&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}});
+    h+=`<h2>預算線</h2><div class="tblwrap"><table><thead><tr><th>線</th><th>剩餘(原幣)</th><th>7月</th><th>8–1月已排</th><th>燒耗</th><th>標記</th></tr></thead><tbody>`;
+    lines.forEach(b=>{
+      const rem=+b.remaining_orig*(b.currency==='USD'?(+proj.fx||31.5):1);
+      const jl=+b.july_draw_twd||0;const bd=billed[b.name]||0;
+      const used=jl+bd;const pct=rem>0?Math.min(100,used/rem*100):0;
+      h+=`<tr><td>${b.name}${b.provisional?'<span class="prov-badge">待文件</span>':''}</td>
+       <td class="num">${b.currency==='USD'?'US$'+(+b.remaining_orig).toLocaleString('en',{maximumFractionDigits:0}):k(+b.remaining_orig)}</td>
+       <td class="num">${jl?k(jl):'—'}</td><td class="num">${bd?k(bd):'—'}</td>
+       <td><div class="bar"><i class="${used>rem&&rem>0?'over':''}" style="width:${pct}%"></i></div></td>
+       <td>${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:(used>rem&&rem>0?'<span class="pill pending">需 rebudget</span>':'')}</td></tr>`;
+    });
+    h+='</tbody></table></div>';
+  }
+  const roster={};W.forEach(a=>{if(a.project_id===pr)roster[a.person_id]=(roster[a.person_id]||0)+ +a.amount_twd});
+  h+=`<div class="grid2"><div><h2>本案人力</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–Jun 金額</th></tr></thead><tbody>${Object.entries(roster).sort((a,b)=>b[1]-a[1]).map(([pid,v])=>`<tr class="click" onclick="location.hash='#person/${pid}'"><td>${pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid}</td><td class="num">${k(v)}</td></tr>`).join('')||'<tr><td colspan=2>尚無配置</td></tr>'}</tbody></table></div></div>`;
+  const avail=[];
+  DB.people.forEach(p=>{if(p.type==='contractor')return;
+    let free=0;M.slice(0,6).forEach(m=>{const{used,cap,sal}=loeOf(p.id,m);if(sal)free+=Math.max(0,cap-used)});
+    if(free>5)avail.push([p,free])});
+  h+=`<div><h2>還可以加進來的人</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>Aug–1月剩餘容量合計</th></tr></thead><tbody>${avail.sort((a,b)=>b[1]-a[1]).map(([p,f])=>`<tr class="click" onclick="location.hash='#person/${p.id}'"><td>${p.alias||p.name}${p.provisional?'<span class="prov-badge">暫定</span>':''}</td><td class="num">${Math.round(f)}%·月</td></tr>`).join('')||'<tr><td colspan=2>全員滿載——這正是 Plan B 的設計狀態</td></tr>'}</tbody></table></div></div></div>`;
+  return h;
+}
+
+function vAmend(){
+  let h=`<h2>Amendment 行動清單</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
+  DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
+  h+=`</tbody></table></div>
+  <h2>待套用提案（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>提案人</th><th>對象</th><th>內容</th><th>狀態</th></tr></thead><tbody>`;
+  const props=DB.proposals.slice(0,50);
+  if(!props.length)h+='<tr><td colspan=6>尚無提案</td></tr>';
+  props.forEach(x=>{
+    const t=x.target_pk||{};
+    const who=pmap[t.person_id]?(pmap[t.person_id].alias||pmap[t.person_id].name):(t.person_id||'');
+    h+=`<tr><td class="num">${x.id}</td><td class="num">${(x.created_at||'').slice(0,16).replace('T',' ')}</td><td>${x.author||''}</td>
+      <td>${who} ${ML[t.month]||t.month||''} ${SHORT[t.project_id]||t.project_id||''}</td>
+      <td class="num">LOE→${x.payload&&x.payload.loe_pct!=null?x.payload.loe_pct+'%':JSON.stringify(x.payload)}${x.note?'｜'+x.note:''}</td>
+      <td><span class="pill ${x.status}">${x.status}</span></td></tr>`;
+  });
+  h+=`</tbody></table></div><p class="note">套用（寫入正式資料）由財務/CEO 透過後端執行；套用後狀態轉 applied。</p>
+  <h2>文件閘門</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>閘門</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
+  ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
+  </tbody></table></div>
+  <h2>決策日誌</h2><div class="tblwrap"><table><tbody>
+  ${DB.decisions.map(d=>`<tr><td class="num">${d.id}</td><td class="num">${d.date}</td><td>${d.title}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  return h;
+}
+
+// ---- proposal dialog ----
+let edCtx=null;
+window.openEdit=(pid,m,pr)=>{
+  const p=pmap[pid];const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
+  edCtx={pid,m,pr,sal:(p.monthly_cost||{})[m]||0,cap:p.capacity_default};
+  document.getElementById('edTitle').textContent=`提案：${p.alias||p.name} · ${ML[m]} · ${SHORT[pr]||pr}`;
+  const cur=a&&a.loe_pct!=null?Math.round(+a.loe_pct):0;
+  document.getElementById('edLoe').value=cur;updAmt();
+  document.getElementById('edAuthor').value=localStorage.getItem('cr_author')||'';
+  document.getElementById('edNote').value='';
+  document.getElementById('editDlg').showModal();
+};
+function updAmt(){if(!edCtx)return;const l=+document.getElementById('edLoe').value||0;
+  document.getElementById('edAmt').textContent=k(edCtx.sal/edCtx.cap*l)}
+document.getElementById('edLoe').addEventListener('input',updAmt);
+document.getElementById('edCancel').onclick=()=>document.getElementById('editDlg').close();
+document.getElementById('edSave').onclick=async()=>{
+  const l=+document.getElementById('edLoe').value;
+  const author=document.getElementById('edAuthor').value.trim();
+  if(!author){alert('請填提案人名字');return}
+  if(l<0||l>edCtx.cap){alert('超過容量上限 '+edCtx.cap+'%');return}
+  localStorage.setItem('cr_author',author);
+  const body={author,target_table:'allocations',action:'update',
+    target_pk:{person_id:edCtx.pid,month:edCtx.m,project_id:edCtx.pr},
+    payload:{loe_pct:l,amount_twd:Math.round(edCtx.sal/edCtx.cap*l)},
+    note:document.getElementById('edNote').value.trim()||null};
+  const r=await fetch(SB+'/rest/v1/edit_proposals',{method:'POST',
+    headers:{...H,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)});
+  document.getElementById('editDlg').close();
+  if(!r.ok){alert('送出失敗 '+r.status);return}
+  await reload('提案已送出');
+};
+
+// ---- shell ----
+function route(){
+  if(!DB)return;
+  const[page,arg]=(location.hash||'#master').slice(1).split('/');
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.startsWith('#'+page)));
+  const T={master:'總表',person:'個人頁',project:'專案頁',amend:'修約與閘門'};
+  document.getElementById('title').textContent=T[page]||'總表';
+  document.getElementById('app').innerHTML=
+    (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='amend'?vAmend():vMaster());
+}
+async function reload(msg){
+  const st=document.getElementById('status');
+  st.innerHTML='<span class="spin"></span>';
+  try{await loadAll();route();st.textContent=(msg||'已同步')+' '+new Date().toLocaleTimeString('zh-TW',{hour12:false});}
+  catch(e){st.textContent='';document.getElementById('app').innerHTML=`<p class="banner err">資料載入失敗：${e.message}。<button class="hbtn" onclick="reload()">重試</button></p>`}
+}
+document.getElementById('refresh').onclick=()=>reload();
+document.getElementById('theme').onclick=()=>{
+  const cur=document.documentElement.dataset.theme||'auto';
+  const next=cur==='auto'?'dark':cur==='dark'?'light':'auto';
+  if(next==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=next;
+  localStorage.setItem('cr_theme',next);
+};
+const th=localStorage.getItem('cr_theme');if(th&&th!=='auto')document.documentElement.dataset.theme=th;
+addEventListener('hashchange',route);
+reload();
+</script>
+</body>
+</html>
