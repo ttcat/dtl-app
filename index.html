@@ -1097,6 +1097,10 @@ const TERMS={'LOE':'工作比例：一個人某個月有多少比例的時間放
 'CDM':'NED 合約裡指定的一塊工作，錢和時程都不動。',
 'ring fence':'不可動用：這筆錢綁定特定用途，不能挪作他用。'};
 function termTip(t){const d=TERMS[t];return d?`<abbr title="${d}" style="text-decoration:underline dotted;cursor:help">${t}</abbr>`:t}
+const ST_LABEL={draft:'還沒送',sent:'已送出',pending_po:'等 NED 回覆',evidence_pending:'等證據',approved:'已核准',
+ open:'還沒完成',closed:'已完成',pending:'等處理',applied:'已接受',rejected:'不接受',needs_review:'要重看',
+ active:'進行中',pipeline:'還在談',closing:'收尾中'};
+const stLabel=v=>ST_LABEL[v]||v;
 function pageIntro(page){const t=PAGE_INTRO[page];return t?`<p class="banner" style="border-left:3px solid var(--fN)">${t}</p>`:''}
 function vMaster(){
   let provAmt=0,provWt=0;
@@ -1300,7 +1304,7 @@ function vProject(pr){
        <td class="num" title="原幣顯示，不隨幣別切換換算">${origMoney(+b.remaining_orig,b.currency)}</td>
        <td class="num">${jl?k(jl):'—'}</td><td class="num">${bd?k(bd):'—'}</td>
        <td><div class="bar"><i class="${used>rem&&rem>0?'over':''}" style="width:${pct}%"></i></div></td>
-       <td>${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:(used>rem&&rem>0?'<span class="pill pending">需 rebudget</span>':'')}</td></tr>`;
+       <td>${b.ring_fence?`<span class="pill">不可動用</span>`:(used>rem&&rem>0?'<span class="pill pending">要挪預算</span>':'')}</td></tr>`;
     });
     h+='</tbody></table></div>';
   }
@@ -1369,7 +1373,7 @@ function vProjects(){
     h+=`<tr class="click" onclick="location.hash='#project/${p.id}'">
       <td><b>${p.name}</b>${p.provisional?`<span class="prov-badge">pipeline${p.confidence!=null?' '+Math.round(p.confidence*100)+'%':''}</span>`:''}</td>
       <td>${p.donor||''}</td><td class="num">${per}</td>
-      <td><span class="pill ${p.status==='active'?'approved':p.status==='pipeline'?'pending':'draft'}">${p.status}</span></td>
+      <td><span class="pill ${p.status==='active'?'approved':p.status==='pipeline'?'pending':'draft'}">${stLabel(p.status)}</span></td>
       <td class="num">${budget?k(budget):'—'}</td><td class="num">${used?k(used):'—'}</td>
       <td>${budget?`<div class="bar"><i class="${used>budget?'over':''}" style="width:${pct}%"></i></div>`:'—'}</td>
       <td class="num">${lastM?(+lastM.slice(0,4))+'/'+(+lastM.slice(4)):'—'}</td><td class="num">${ppl||'—'}</td></tr>`;
@@ -1404,7 +1408,7 @@ function vLines(){
     const key=encodeURIComponent(b.project_id+'||'+b.name);
     h+=`<tr class="click" onclick="location.hash='#line/${key}'">
       <td><b style="color:var(${PC[b.project_id]||'--ink'})">${SHORT[b.project_id]||b.project_id}</b></td>
-      <td>${b.name}${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}</td>
+      <td>${b.name}${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可動用</span>`:''}</td>
       <td>${PERSCAT.includes(b.category)?(b.category||''):`<span style="color:var(--ink3)">${b.category||''}（非人事）</span>`}</td>
       <td class="num">${origMoney(+b.remaining_orig,b.currency)}</td>
       <td><div class="bar"><i class="${over?'over':''}" style="width:${pct}%"></i></div></td>
@@ -1434,7 +1438,7 @@ function vLine(keyEnc){
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <a href="#lines" class="hbtn" style="text-decoration:none">≡ 所有職位</a>
     <a href="#project/${pr}" class="hbtn" style="text-decoration:none;color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</a>
-    <b>${name}</b>${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">${b.ring_fence} 不動</span>`:''}
+    <b>${name}</b>${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可動用</span>`:''}
     <span class="pill num" title="原幣，不隨幣別切換">${origMoney(+b.remaining_orig,b.currency)||'（金額隱藏）'}</span>
     <span class="num" style="font-size:12px;color:${over?'var(--crit)':'var(--ink2)'}">已排 ${k(used)||''}（${Math.round(pct)}%）${over?'⚠ 爆線':''}</span>
     ${isAdmin()?`<button class="hbtn" onclick="frmLineBudget('${pr}','${name.replace(/'/g,"\\'")}')">✎ 改預算額</button>`:''}
@@ -1743,9 +1747,9 @@ function vCompare(cmpId){
   return h;
 }
 function vAmend(){
-  let h=`<p class="banner">本頁 要跟 NED 談的改動清單＝「<b>新計劃</b>」相對 donor 核准版（approved 層）的要跟 NED 談的改動；目前檢視版本：<b>${(SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE}</b>。</p>
+  let h=`<p class="banner">這頁列的是「<b>新計劃</b>」跟 NED 當初核准的版本差在哪——這些就是要跟 NED 談的項目。目前看的版本是：<b>${(SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE}</b>。</p>
   <h2>要跟 NED 談的改動</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>Donor</th><th>類型</th><th>內容</th><th>金額</th><th>狀態</th></tr></thead><tbody>`;
-  DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${a.status}</span></td></tr>`});
+  DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${stLabel(a.status)}</span></td></tr>`});
   h+=`</tbody></table></div>
   <h2>待處理的修改建議（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>建議人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
   const props=DB.proposals.slice(0,50);
@@ -1756,12 +1760,12 @@ function vAmend(){
     h+=`<tr><td class="num">${x.id}</td><td class="num">${(x.created_at||'').slice(0,16).replace('T',' ')}</td><td>${x.author||''}</td>
       <td>${who} ${ML[t.month]||t.month||''} ${SHORT[t.project_id]||t.project_id||''}</td>
       <td class="num">LOE→${x.payload&&x.payload.loe_pct!=null?x.payload.loe_pct+'%':JSON.stringify(x.payload)}${x.note?'｜'+x.note:''}</td>
-      <td><span class="pill ${x.status}">${x.status}</span></td>
+      <td><span class="pill ${x.status}">${stLabel(x.status)}</span></td>
       ${isAdmin()?`<td>${(x.status==='pending'||x.status==='needs_review')?`<button class="miniact ok" onclick="applyProposal(${x.id})">接受</button><button class="miniact no" onclick="rejectProposal(${x.id})">退回</button>`:''}</td>`:''}</tr>`;
   });
   h+=`</tbody></table></div><p class="note">「接受」＝把這個建議寫進正式資料；「不接受」＝退回並留下理由。接受之後，總表上那格的 ⏳ 就會變成正式數字。</p>
   <h2>待辦事項</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>待辦</th><th>負責</th><th>死線</th><th>影響</th><th>狀態</th></tr></thead><tbody>
-  ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${g.status}</span></td></tr>`).join('')}
+  ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner}</td><td class="num">${g.deadline}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${stLabel(g.status)}</span></td></tr>`).join('')}
   </tbody></table></div>
   <h2><svg class="icon"><use href="#i-lock"/></svg> 已送財報·鎖定</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
   ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——等哪天真的把財報寄出去了，那天回來這裡登記一下</td></tr>'}
