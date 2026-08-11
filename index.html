@@ -227,6 +227,44 @@ const draftBanner=()=>{
     <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
     <button class="miniact" onclick="archiveScn()">封存草稿</button></p>`;
 };
+// ---- B14: 月度快照——official 三表寫入的共用攔截門 ----
+const isSnap=s=>String(s.id||'').startsWith('snap_')||String(s.id||'').startsWith('msnap_');
+async function copyOfficialTo(id){
+  const alloc=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL)
+    .map(a=>({person_id:a.person_id,month:a.month,project_id:a.project_id,loe_pct:a.loe_pct,
+      amount_twd:a.amount_twd,ned_line:a.ned_line,layer:'working',scenario_id:id,provisional:a.provisional}));
+  for(let i=0;i<alloc.length;i+=200)await dbIns('allocations',alloc.slice(i,i+200));
+  const st=(DB.staffing||[]).filter(r=>r.scenario_id===OFFICIAL)
+    .map(r=>({scenario_id:id,person_id:r.person_id,month:r.month,cost:r.cost,capacity:r.capacity}));
+  for(let i=0;i<st.length;i+=200)await dbIns('staffing',st.slice(i,i+200));
+  const ex=EXP.filter(e=>e.scenario_id===OFFICIAL)
+    .map(e=>({scenario_id:id,month:e.month,category:e.category,item:e.item,payer:e.payer,
+      amount_twd:e.amount_twd,note:e.note,project_id:e.project_id,line_id:e.line_id}));
+  for(let i=0;i<ex.length;i+=200)await dbIns('expense_plan',ex.slice(i,i+200));
+}
+async function takeSnapshot(id,name,reason,ymMark){
+  await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
+    status:'archived',owner:null,created_by:ROLE.email,name,note:'快照｜'+reason,
+    headline:(SCNS.find(s=>s.id===OFFICIAL)||{}).headline||null});
+  await copyOfficialTo(id);
+  if(ymMark)await dbIns('settings?on_conflict=key',{key:'last_snapshot_month',value:{v:ymMark}},'');
+}
+async function ensureSnapshot(reason){ // 每個 official 三表寫入路徑進門先過這裡
+  if(!isAdmin()||ACTIVE!==OFFICIAL)return; // 草稿寫入不觸發
+  const ym=new Date().toISOString().slice(0,7).replace('-','');
+  const last=String(DB.settings.last_snapshot_month||'');
+  if(last>=ym)return; // 同月只快照一次
+  const st=document.getElementById('status');st.innerHTML='<span class="spin"></span> 本月首次修改，先留存快照…';
+  await takeSnapshot('snap_'+ym,`${+ym.slice(0,4)}年${+ym.slice(4)}月版（自動快照）`,'首筆修改前自動留存：'+reason,ym);
+  DB.settings.last_snapshot_month=ym;
+}
+window.manualSnapshot=()=>openForm('📸 立即快照（把現行正式版三表整份留存）',[
+  {id:'why',label:'留存原因',placeholder:'例：定案前存檔'},
+],async v=>{
+  const ts=new Date().toISOString().slice(0,16).replace('T',' ');
+  await takeSnapshot('msnap_'+Date.now().toString(36),'手動快照 '+ts,v.why||'手動快照',null);
+  await reload('快照已留存');
+});
 window.frmScn=()=>openForm('開新情境（複製正式版）',[
   {id:'name',label:'情境名稱*',placeholder:'例：加碼全過版'},
   {id:'why',label:'說明(選填)',placeholder:'這個情境想驗證什麼'},
@@ -310,6 +348,7 @@ window.frmPerson=()=>openForm('新增同事',[
   if(!v.name)throw new Error('姓名必填');
   const jm=monthInputToKey(v.join);if(!jm)throw new Error('到職月必填');
   const cost=+v.cost||0;const id=slug(v.alias||v.name)+'_'+Math.floor(Math.random()*900+100);
+  await ensureSnapshot('新增同事 '+v.name);
   await dbIns('people',{id,name:v.name,alias:v.alias||v.name,type:v.type,
     capacity_default:+v.cap||100,benefits_eligible:v.type!=='contractor',
     monthly_cost:{},team:v.team||null,provisional:false,note:'表單新增'});
@@ -357,6 +396,7 @@ window.frmCap=(pid,m)=>openForm('調整容量：'+(pmap[pid].alias||pmap[pid].na
   const c=+v.cap;if(!(c>=0&&c<=100))throw new Error('容量 0–100');
   const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0).map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:costOf(pid,x),capacity:c}));
   if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份');
+  await ensureSnapshot('容量調整 '+pid);
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'capacity_change',note:'容量調整為 '+c+'%（'+ML[v.from]+' 起）'});
   await reload('容量已更新'+(ACTIVE!==OFFICIAL?'（僅此草稿）':''));
@@ -370,6 +410,7 @@ window.frmSalary=(pid,m)=>openForm('調薪：'+(pmap[pid].alias||pmap[pid].name)
   const rows=M.filter(x=>x>=v.from&&costOf(pid,x)>0) // 只調在編月份——調薪不是延長聘期（聘期用到職/離職設）
     .map(x=>({scenario_id:ACTIVE,person_id:pid,month:x,cost:c,capacity:capOf(pid,x)}));
   if(!rows.length)throw new Error(ML[v.from]+' 起沒有在編月份——調薪只作用於已有薪資的月份；要延長聘期請用「設到職日」');
+  await ensureSnapshot('調薪 '+pid);
   await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.from.slice(0,4)+'-'+v.from.slice(4)+'-01',type:'salary_change',note:'月成本調整為 '+c+'（'+ML[v.from]+' 起）'});
   await reload('月成本已更新'+(ACTIVE!==OFFICIAL?'（僅此草稿的假設）':''));
@@ -389,6 +430,7 @@ window.frmDate=(pid,kind)=>openForm((kind==='departure'?'設定離職日：':'�
     else{if(mm<em)c=0;else if(mm===em)c=Math.round(base*(dim-d+1)/dim)}
     if(c!=null)rows.push({scenario_id:ACTIVE,person_id:pid,month:mm,cost:c,capacity:capOf(pid,mm)});
   });
+  await ensureSnapshot((kind==='departure'?'離職日 ':'到職日 ')+pid);
   if(rows.length)await dbIns('staffing?on_conflict=scenario_id,person_id,month',rows,'');
   if(ACTIVE===OFFICIAL)await dbIns('contract_events',{person_id:pid,date:v.date,type:kind,
     note:(kind==='departure'?'離職':'到職')+'（表單設定，'+(v.note||'按日比例')+'）'});
@@ -401,6 +443,7 @@ window.applyProposal=async id=>{
   const l=+((x.payload||{}).loe_pct??0);
   const sal=costOf(t.person_id,t.month);const cap=capOf(t.person_id,t.month)||100;
   const amount=(x.payload&&x.payload.amount_twd!=null)?+x.payload.amount_twd:Math.round(sal/cap*l);
+  await ensureSnapshot('套用提案 #'+id);
   const offW=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL);
   const exist=offW.find(a=>a.person_id===t.person_id&&a.month===t.month&&a.project_id===t.project_id);
   const extraNed=(x.payload&&x.payload.ned_line)?{ned_line:x.payload.ned_line}:{};
@@ -1095,6 +1138,7 @@ window.frmExp=(pr,gk,m)=>{
     {id:'payer',label:'payer',type:'select',value:single?single.payer:'grant',options:[['grant','grant（計劃支付）'],['internal','internal（存金）']]},
   ],async v=>{
     const a=+v.amt;if(!(a>=0))throw new Error('金額需 ≥ 0');
+    await ensureSnapshot('支出編輯 '+pr);
     if(single)await dbUpd('expense_plan','id=eq.'+single.id,{item:v.item||single.item,amount_twd:a,payer:v.payer,note:'表單編輯'});
     else await dbIns('expense_plan',{scenario_id:ACTIVE,project_id:pr,line_id:lineId,month:m,
       category:cat,item:v.item||cat,payer:v.payer,amount_twd:a,note:'表單新增'});
@@ -1115,10 +1159,11 @@ function scnCard(s,mx){
     .map(pr=>`<span class="pill" style="${(prmap[pr]||{}).provisional?'border-style:dashed;':''}color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</span>`).join(' ');
   const notes=SNOTES[s.id]||[];
   const isOff=s.status==='official';
+  const snap=isSnap(s);
   const canCompare=s.status==='draft'&&(myDrafts().some(x=>x.id===s.id)||aiDrafts().some(x=>x.id===s.id));
   let h=`<tr class="click" onclick="toggScn('${s.id}')" ${isOff?'style="background:color-mix(in oklab,var(--good) 8%,transparent)"':''}>
-    <td>${isOff?'📌':ai?'🤖':s.status==='archived'?'🗄':'🧪'} <b>${s.name||s.id}</b></td>
-    <td><span class="pill ${isOff?'approved':s.status==='draft'?'pending':'draft'}">${isOff?'正式版':s.status==='draft'?'提案中':'已歸檔'}</span></td>
+    <td>${isOff?'📌':ai?'🤖':snap?'📸':s.status==='archived'?'🗄':'🧪'} <b>${s.name||s.id}</b></td>
+    <td><span class="pill ${isOff?'approved':s.status==='draft'?'pending':snap?'sent':'draft'}">${isOff?'正式版':s.status==='draft'?'提案中':snap?'快照':'已歸檔'}</span></td>
     <td>${ai?'🤖 AI':s.owner?('👤 '+s.owner.split('@')[0]):'—'}</td>
     <td class="num">${s.date||''}</td>
     <td class="num">${k(mx.total)||'—'}</td>
@@ -1130,6 +1175,7 @@ function scnCard(s,mx){
     ${s.rationale?`<div class="mysum" style="border-left-color:var(--fP);margin:8px 0">${ai?'🤖':'📝'} ${esc(s.rationale)}</div>`:''}
     <div style="margin:6px 0">
       ${canCompare?`<button class="miniact ok" onclick="event.stopPropagation();goCompare('${s.id}')">與正式版比較</button>`:''}
+      ${s.status==='archived'?`<button class="miniact" onclick="event.stopPropagation();location.hash='#compare/${s.id}'">與現行正式版比較${snap?'（這個月改了什麼）':''}</button>`:''}
       <button class="miniact" onclick="event.stopPropagation();frmSNote('${s.id}')">＋備注</button>
     </div>
     ${notes.length?`<div style="margin:6px 0">${notes.map(n=>`<p class="note" style="margin:4px 0">${n.author_type==='ai'?'🤖':'👤'} <b>${esc((n.author||'').split('@')[0])}</b> <span class="num">${(n.created_at||'').slice(0,16).replace('T',' ')}</span>——${esc(n.note)}</p>`).join('')}</div>`:'<p class="note">尚無備注。</p>'}
@@ -1138,9 +1184,12 @@ function scnCard(s,mx){
 }
 function vScenarios(){
   const head=`<thead><tr><th>提案/情境</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>存金投入</th><th>超容量</th><th>涉及專案（計劃組合）</th><th>💬</th></tr></thead>`;
+  const snapBtn=`<div style="display:flex;gap:8px;align-items:center;margin:0 0 8px">
+    <button class="hbtn" onclick="manualSnapshot()">📸 立即快照</button>
+    <span class="note" style="margin:0">每月首筆正式版修改會自動留存上月狀態；大改前也可手動留檔。快照只供比較、不可定案。</span></div>`;
   const act=[...SCNS].filter(s=>s.status!=='archived').sort((a,b)=>(a.status==='official'?-1:1)-(b.status==='official'?-1:1));
   const arc=SCNS.filter(s=>s.status==='archived');
-  let h=`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金投入＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
+  let h=snapBtn+`<p class="note">一列一提案；「涉及專案」顯示各方案的計劃組合差異（某案不在列＝該提案不用那個案）。存金投入＝實列口徑（暫定人力另計）。點列展開 rationale 與備注串；備注僅 管理者＋AI 可見可寫，不可改不可刪（要更正就再留一則）。</p>
   <div class="tblwrap"><table>${head}<tbody>`;
   act.forEach(s=>{h+=scnCard(s,scnMetrics(scnRowsOf(s.id),s.id))});
   h+='</tbody></table></div>';
@@ -1187,13 +1236,17 @@ function staffDiff(offScn,drScn){ // B10: 用人差異（薪資/容量/起訖）
   });
   return out;
 }
-function vCompare(){
-  if(ACTIVE===OFFICIAL)return '<p class="banner">目前在正式版——先用右上「＋情境」開草稿，或切到既有草稿再比較。</p>';
-  const off=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL);
-  const dr=W;
-  const mo=scnMetrics(off,OFFICIAL),md=scnMetrics(dr,ACTIVE);
-  const scn=SCNS.find(s=>s.id===ACTIVE)||{};
-  const offName=(SCNS.find(s=>s.id===OFFICIAL)||{}).name||'正式版';
+function vCompare(cmpId){
+  // cmpId＝歷史版（快照/歸檔）比較模式：base=歷史（舊）、target=現行正式版（新）→ 回答「改了什麼」
+  const hist=cmpId?SCNS.find(s=>s.id===cmpId):null;
+  if(cmpId&&(!hist||hist.status!=='archived'))return '<p class="banner err">找不到這個歷史版本。</p>';
+  if(!cmpId&&ACTIVE===OFFICIAL)return '<p class="banner">目前在正式版——先用右上「＋情境」開草稿；或到「提案」頁對快照/歸檔版按比較。</p>';
+  const baseId=cmpId?cmpId:OFFICIAL, targetId=cmpId?OFFICIAL:ACTIVE;
+  const off=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===baseId);
+  const dr=cmpId?DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL):W;
+  const mo=scnMetrics(off,baseId),md=scnMetrics(dr,targetId);
+  const scn=cmpId?(SCNS.find(s=>s.id===OFFICIAL)||{}):(SCNS.find(s=>s.id===ACTIVE)||{});
+  const offName=cmpId?((hist||{}).name||cmpId):((SCNS.find(s=>s.id===OFFICIAL)||{}).name||'正式版');
   const dTag=v=>v>500?`<span style="color:var(--crit)">▲${k(v)}</span>`:v<-500?`<span style="color:var(--good)">▼${k(-v)}</span>`:'—';
   const dN=v=>v>0?`<span style="color:var(--crit)">▲${v}</span>`:v<0?`<span style="color:var(--good)">▼${-v}</span>`:'—';
   const ai=isAiOwner(scn.owner);
@@ -1201,24 +1254,28 @@ function vCompare(){
     if(+hd.fy2026_loss_best)return (hd.label||'')+' '+wan(+hd.fy2026_loss_best)+'–'+wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best);
     if(+hd.aug_jan_internal)return (hd.label||'')+' '+wan(+hd.aug_jan_internal);
     return '（無帳面標題）'};
+  const baseTag=cmpId?`${isSnap(hist)?'📸':'🗄'} ${offName}`:`📌 ${offName}`;
+  const targetTag=cmpId?`📌 現行正式版`:`${ai?'🤖':'🧪'} ${scn.name||ACTIVE}`;
+  const baseHead=cmpId?'歷史版':'正式版', targetHead=cmpId?'現行':'草稿';
   let h=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <b>情境比較：</b><span class="pill">📌 ${offName}</span> vs <span class="pill" style="border-style:dashed">${ai?'🤖':'🧪'} ${scn.name||ACTIVE}</span>
-    <button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>
-    <a class="hbtn" href="#master" style="text-decoration:none">回總表</a></div>
-  <p class="note" style="margin:0 0 10px">帳面口徑：📌 ${hl(SCNS.find(s=>s.id===OFFICIAL))}　｜　${ai?'🤖':'🧪'} ${hl(scn)}</p>
-  ${scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}`;
-  h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>正式版</th><th>草稿</th><th>差異</th></tr></thead><tbody>
+    <b>${cmpId?'歷史比較（改了什麼）：':'情境比較：'}</b><span class="pill">${baseTag}</span> vs <span class="pill" style="border-style:dashed">${targetTag}</span>
+    ${cmpId?'':'<button class="miniact ok" onclick="finalizeScn()">定案為正式版</button>'}
+    <a class="hbtn" href="${cmpId?'#scenarios':'#master'}" style="text-decoration:none">${cmpId?'回提案總覽':'回總表'}</a></div>
+  <p class="note" style="margin:0 0 10px">帳面口徑：${baseTag.slice(0,2)} ${hl(cmpId?hist:SCNS.find(s=>s.id===OFFICIAL))}　｜　${targetTag.slice(0,2)} ${hl(scn)}</p>
+  ${!cmpId&&scn.rationale?`<div class="mysum" style="border-left-color:var(--fP)">${ai?'🤖 <b>AI 提案理由</b>：':'📝 <b>情境說明</b>：'}${scn.rationale}</div>`:''}
+  ${cmpId?`<div class="mysum" style="border-left-color:var(--fP)">📸 ${esc(hist.note||'')}（留存於 ${hist.date||''}）——下表差異＝從這份歷史狀態到現在的所有變動。</div>`:''}`;
+  h+=`<div class="tblwrap"><table><thead><tr><th>指標</th><th>${baseHead}</th><th>${targetHead}</th><th>差異</th></tr></thead><tbody>
     <tr><td>存金合計（薪資實，全時間軸）</td><td class="num">${k(mo.internal)||'0'}</td><td class="num">${k(md.internal)||'0'}</td><td class="num">${dTag(md.internal-mo.internal)}</td></tr>
-    ${(()=>{const eo=M.reduce((s,m)=>{const e=expInt(OFFICIAL,m);return s+e.ben+e.np},0);
-      const ed=M.reduce((s,m)=>{const e=expInt(ACTIVE,m);return s+e.ben+e.np},0);
+    ${(()=>{const eo=M.reduce((s,m)=>{const e=expInt(baseId,m);return s+e.ben+e.np},0);
+      const ed=M.reduce((s,m)=>{const e=expInt(targetId,m);return s+e.ben+e.np},0);
       return `<tr><td>福利＋非人事（存金）</td><td class="num">${k(eo)||'0'}</td><td class="num">${k(ed)||'0'}</td><td class="num">${dTag(ed-eo)}</td></tr>
       <tr><td><b>帳面合計</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
     <tr><td>超容量格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
   </tbody></table></div>`;
-  const sd=staffDiff(OFFICIAL,ACTIVE);
+  const sd=staffDiff(baseId,targetId);
   if(sd.length){
-    h+=`<h2>用人差異（${sd.length} 人）</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>差異（正式版 → 草稿）</th></tr></thead><tbody>`;
+    h+=`<h2>用人差異（${sd.length} 人）</h2><div class="tblwrap"><table><thead><tr><th>人員</th><th>差異（${baseHead} → ${targetHead}）</th></tr></thead><tbody>`;
     sd.forEach(x=>{h+=`<tr class="click" onclick="location.hash='#person/${x.pid}'"><td><b>${x.name}</b></td><td style="white-space:normal">${x.desc}</td></tr>`});
     h+='</tbody></table></div>';
   }
@@ -1371,7 +1428,7 @@ function route(){
   document.getElementById('title').textContent=T[page]||'總表';
   document.getElementById('app').innerHTML=(page==='compare'?'':draftBanner())+
     (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='projects'?vProjects()
-     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare()
+     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare(arg)
      :page==='scenarios'?vScenarios():vMaster());
 }
 async function reload(msg){
