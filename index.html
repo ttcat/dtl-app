@@ -730,7 +730,7 @@ const noteOf=(scope,id,m)=>NOTES[scope+'|'+id+'|'+m]||'';
 window.frmNote=(scope,id,m)=>{
   const cur=noteOf(scope,id,m);
   const who=scope==='person'?(pmap[id]?(pmap[id].alias||pmap[id].name):id):((prmap[id]||{}).name||id);
-  openForm('當月重點：'+who+' · '+(ML[m]||m),[
+  openForm('編輯這個月要完成的工作：'+who+' · '+(ML[m]||m),[
     {id:'note',label:'重點/產出',type:'textarea',value:cur,placeholder:'這個月的工作重點、應有產出（同事看得到）'},
   ],async v=>{
     await dbIns('month_notes?on_conflict=scope,scope_id,month',
@@ -741,7 +741,7 @@ window.frmNote=(scope,id,m)=>{
 function noteCell(scope,id,m){ // B16: 格內多段完整顯示；過長折疊
   const nt=noteOf(scope,id,m);
   const edit=isAdmin()?`onclick="frmNote('${scope}','${id}','${m}')"`:'';
-  if(!nt)return `<td><span class="cell ${isAdmin()?'capEdit':''}" style="color:var(--ink3)" ${edit} title="${isAdmin()?'點擊編輯當月重點':''}">${isAdmin()?'＋':'·'}</span></td>`;
+  if(!nt)return `<td><span class="cell ${isAdmin()?'capEdit':''}" style="color:var(--ink3)" ${edit} title="${isAdmin()?'點擊填寫這個月要完成的工作':''}">${isAdmin()?'＋':'·'}</span></td>`;
   const long=nt.split('\n').length>6||nt.length>170;
   const nid=('nb_'+scope+'_'+id+'_'+m).replace(/[^\w]/g,'_');
   return `<td style="vertical-align:top"><div class="noteBox ${long?'clamp':''} ${isAdmin()?'capEdit':''}" id="${nid}" ${edit} title="${esc(nt)}">${esc(nt)}</div>${long?`<button class="miniact" style="margin-top:2px" onclick="toggNote('${nid}',this)">展開</button>`:''}</td>`;
@@ -1173,7 +1173,7 @@ const boardCat=c=>{for(const[t,g]of BOARD_MAP)if((c||'').includes(t))return g;re
 const PAGE_INTRO={master:'這裡看全部同事每個月做哪些案子、各佔多少工作比例。切到「資金視圖」可以看每個月我們自己要掏多少錢。灰底的月份是<b>已經發生</b>的實際分帳（不能修改），往左捲可以看更早。',
  person:'這裡看一個人的完整安排：每個月做哪些案子、工時上限、薪水、當月工作重點。',
  projects:'這裡看所有案子的總覽：期間、還剩多少錢、用掉多少、幾個人在做。',
- project:'這裡看一個案子：預算線、誰在做、每個月要花的業務費、當月重點。',
+ project:'這裡看一個案子：預算線、誰在做、每個月要花的業務費，以及這個月要完成什麼。',
  lines:'這裡看所有職位的預算使用情形：哪些還沒安排人、哪些已經超過預算，以及每個職位的接手安排。',
  line:'這裡看一個職位：誰做到什麼時候、誰接手，以及這個職位的錢用掉多少。',
  scenarios:'這裡比較不同的算法版本，選一個當作正式版。AI 或財務提的建議也會出現在這裡。',
@@ -1422,7 +1422,7 @@ function vPerson(pid){
     });
     h+='</tr>';
   }
-  h+=`<tr><td><b>📝 當月重點</b>${isAdmin()?'<span class="tag">點格可改</span>':''}</td>`;
+  h+=`<tr><td><b>📝 這個月要完成什麼</b>${isAdmin()?'<span class="tag">點月份可編輯</span>':''}</td>`;
   M.forEach(m=>{h+=noteCell('person',pid,m)});
   h+='</tr></tbody></table></div>'+(ACT_TO>=ACT_FROM?`<p class="note">灰底月份＝已經發生的實際分帳（${(+ACT_FROM.slice(0,4))}/${+ACT_FROM.slice(4)}–${(+ACT_TO.slice(0,4))}/${+ACT_TO.slice(4)}），不能修改；2025 年度資料未匯入。</p>`:'')+'<p class="note">點任何一格可以提出修改建議（送出後會先變成待處理，不會直接改到正式資料）'+(isAdmin()?'；「工時上限」那一列點格子可以從某個月起調整；到職／離職日用上面的按鈕設定，當月薪水系統會自動按天數比例算，而且每一次改動都留下紀錄':'')+'。</p>'+farNote();
   h+=notesDigest('person',pid,'本人逐月');
@@ -1485,7 +1485,7 @@ function vProject(pr){
     h+=`</tbody></table></div><p class="note">每格＝這條預算線那個月計劃要花的錢（黃底＝其中有一部分要我們自己出）；滑鼠移上去看細項；${isAdmin()?'點格編輯（單筆直接改、多筆為追加）；':''}這區同事也看得到。</p>`;
   }
   h+=`<h2>📝 逐月重點（同事可見）</h2><div class="tblwrap"><table><thead><tr><th>—</th>${thead()}</tr></thead><tbody>
-    <tr><td><b>當月重點</b>${isAdmin()?'<span class="tag">點格可改</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
+    <tr><td><b>這個月要完成什麼</b>${isAdmin()?'<span class="tag">點月份可編輯</span>':''}</td>${M.map(m=>noteCell('project',pr,m)).join('')}</tr>
   </tbody></table></div>`;
   h+=notesDigest('project',pr,'本案逐月');
   const roster={};W.forEach(a=>{if(a.project_id===pr)roster[a.person_id]=(roster[a.person_id]||0)+ +a.amount_twd});
