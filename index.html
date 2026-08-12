@@ -1308,8 +1308,10 @@ function vPerson(pid){
   });
   h+=`<tr><td><b>每月合計</b></td>`;
   M.forEach(m=>{
-    if(isActualM(m)){const c=actCost(pid,m);
-      h+=`<td><span class="cell num uAct" title="已發生：該月實付合計">${c?k(c):'—'}</span></td>`;return}
+    if(isActualM(m)){const ar=actRows(pid,m);const c=actCost(pid,m);
+      if(!ar.length&&!c){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+      const al=Math.round(ar.reduce((t,a)=>t+(+a.loe_pct||0),0));
+      h+=`<td><span class="cell num uAct" title="已發生：該月工作比例合計 ${al}%｜實付 ${k(c||ar.reduce((t,a)=>t+(+a.amount_twd||0),0))}">${al||'—'}</span></td>`;return}
     const{used,cap,active}=loeOf(pid,m);
     if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
     const u=Math.round(used);
