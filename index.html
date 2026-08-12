@@ -1295,10 +1295,11 @@ function vPerson(pid){
         if(!ac){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
         h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${Math.round(+ac.loe_pct||0)}%｜${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${Math.round(+ac.loe_pct||0)}</span></td>`;
         return}
-      const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
+      const rows=W.filter(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const pd=pending[[pid,m,pr].join('|')];
-      if(!a&&!pd){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-      const shown=pd?(pd.payload.loe_pct??'·'):(a&&a.loe_pct!=null?Math.round(+a.loe_pct):'·');
+      if(!rows.length&&!pd){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
+      const sumLoe=rows.reduce((t,r)=>t+(+r.loe_pct||0),0);
+      const shown=pd?(pd.payload.loe_pct??'·'):(rows.length?Math.round(sumLoe):'·');
       h+=`<td><span class="cell num uEdit ${rows.some(r=>r.provisional)?'uP':''} ${pd?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
         title="本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}${rows.length>1?'（'+rows.length+' 條線加總）':''}&#10;${rows.map(r=>`${r.ned_line?esc(r.ned_line):'未歸線'} ${Math.round(+r.loe_pct||0)}%｜${k(+r.amount_twd)}`).join('&#10;')||''}${sealTip(pr,m)}${pd?'&#10;修改建議中：'+(pd.payload.loe_pct||'')+'%（'+(pd.author||'')+'）':''}">${shown}${pd?'⏳':''}${sealMark(pr,m)}</span></td>`;
