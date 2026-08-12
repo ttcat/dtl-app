@@ -1380,8 +1380,8 @@ function vPerson(pid){
       const pds=rows.map(r=>pendingAt(pid,m,pr,r.ned_line)).filter(Boolean);
       if(basePd&&!pds.some(x=>x.id===basePd.id))pds.push(basePd);
       if(!rows.length&&!pds.length){
-        if(pr==='internal'&&isAdmin()&&costOf(pid,m)>0)
-          h+=`<td><span class="cell num uEdit ${m>FARM?'uFar':''}" onclick="openEdit('${pid}','${m}','internal')" title="點擊安排這個月由 DTL 自有存款支付的工作比例">＋</span></td>`;
+        if(pr==='internal'&&costOf(pid,m)>0)
+          h+=`<td><span class="cell num uEdit ${m>FARM?'uFar':''}" onclick="openEdit('${pid}','${m}','internal')" title="目前為 0%；點擊調整這個月由 DTL 自有存款支付的工作比例">0</span></td>`;
         else h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';
         return}
       const sumLoe=rows.reduce((t,r)=>t+(+r.loe_pct||0),0);
@@ -1433,7 +1433,7 @@ function vPerson(pid){
   h+=`<tr><td><b>📝 這個月要完成什麼</b>${isAdmin()?'<span class="tag">點月份可編輯</span>':''}</td>`;
   M.forEach(m=>{h+=noteCell('person',pid,m)});
   h+='</tr></tbody></table></div>'+
-    '<p class="note"><b style="color:var(--crit)">DTL 自有存款（Internal）</b>不是外部補助案，而是當月薪資中由 DTL 自己支付的工作比例；這列會計入每月合計。管理者可點空白月份的「＋」新增。</p>'+
+    '<p class="note"><b style="color:var(--crit)">DTL 自有存款（Internal）</b>不是外部補助案，而是當月薪資中由 DTL 自己支付的工作比例；這列會計入每月合計。格內 0 代表目前沒有使用自有存款，點數字可提出調整。</p>'+
     (ACT_TO>=ACT_FROM?`<p class="note">灰底月份＝已經發生的實際分帳（${(+ACT_FROM.slice(0,4))}/${+ACT_FROM.slice(4)}–${(+ACT_TO.slice(0,4))}/${+ACT_TO.slice(4)}），不能修改；2025 年度資料未匯入。</p>`:'')+'<p class="note">點任何一格可以提出修改建議（送出後會先變成待處理，不會直接改到正式資料）'+(isAdmin()?'；「工時上限」那一列點格子可以從某個月起調整；到職／離職日用上面的按鈕設定，當月薪水系統會自動按天數比例算，而且每一次改動都留下紀錄':'')+'。</p>'+farNote();
   h+=notesDigest('person',pid,'本人逐月');
   const ds=DB.deliverables.filter(d=>d.owner===pid);
