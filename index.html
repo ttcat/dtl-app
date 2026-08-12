@@ -49,6 +49,9 @@ nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
 nav a{padding:6px 12px;border-radius:6px;color:var(--ink2);text-decoration:none;font-size:13px}
 nav a.on{background:var(--ink);color:var(--paper);font-weight:600}
 .hbtn{border:1.5px solid var(--line2);background:var(--card);color:var(--ink);border-radius:var(--rb);padding:5px 12px;font-size:12px;cursor:pointer}.hbtn:hover{background:var(--rail)}
+.headMenu{position:relative}.headMenu>summary{list-style:none}.headMenu>summary::-webkit-details-marker{display:none}
+.headPanel{position:absolute;right:0;top:calc(100% + 7px);z-index:20;display:grid;gap:8px;min-width:190px;padding:10px;background:var(--card);border:1.5px solid var(--line2);box-shadow:0 12px 30px color-mix(in oklab,var(--ink) 16%,transparent)}
+.headPanel .hbtn{width:100%;min-height:34px}.headPanel label{display:grid;gap:3px;font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
 main{padding:16px 18px;max-width:1280px;margin:0 auto}
 h2{font-size:15px;margin:4px 0 10px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
@@ -131,7 +134,7 @@ dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 #login .btn{width:100%;padding:9px}
 #login .msg{font-size:13px;margin-top:12px;color:var(--good)}
 #login .msg.err{color:var(--crit)}
-@media(max-width:900px){header{position:static}nav{width:100%;margin-left:0;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}nav>*{flex:0 0 auto}}
+@media(max-width:900px){header{position:static}nav{width:100%;margin-left:0;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}nav>*{flex:0 0 auto}.headPanel{position:fixed;top:68px;right:10px}}
 @media(max-width:640px){.cell{min-width:34px;padding:2px 2px;font-size:11px}td,th{padding:4px 5px}main{padding:10px 8px}.hbtn,.btn,.miniact{min-height:44px}.burn{min-width:170px}}
 </style>
 <script>/* B21 主題早期正規化：一律落到 base-light/base-dark/classic 三值之一 */
@@ -163,12 +166,15 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
   <nav id="nav">
     <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">案子</a><a href="#lines">職位</a><a href="#scenarios">版本</a><a href="#amend">待辦與死線</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
-    <button class="hbtn" onclick="showCheat()" title="三分鐘看懂這個系統">說明</button><select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select>
+    <button class="hbtn" onclick="showCheat()" title="三分鐘看懂這個系統">說明</button>
     <select class="hbtn" id="scnSel" title="版本：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
     <button class="hbtn" id="scnNew" title="開新版本（複製正式版成你的沙盒）" style="display:none" onclick="frmScn()">＋開新版本</button>
-    <select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select>
-    <button class="hbtn" id="maskBtn" title="隱藏/顯示金額（分享螢幕用）" style="display:none">👁 金額</button>
-    <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
+    <details class="headMenu"><summary class="hbtn">顯示與帳號</summary><div class="headPanel">
+      <label>主題<select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select></label>
+      <label>顯示幣別<select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select></label>
+      <button class="hbtn" id="maskBtn" title="隱藏/顯示金額（分享螢幕用）" style="display:none">👁 金額</button>
+      <button class="hbtn" id="logout" title="登出" style="display:none">登出</button>
+    </div></details>
   </nav>
 </header>
 <div id="login" style="display:none"><div class="box">
