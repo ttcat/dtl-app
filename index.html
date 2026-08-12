@@ -1171,8 +1171,9 @@ function vMaster(){
         const ar=actRows(p.id,m);const cost=actCost(p.id,m);
         if(!ar.length&&!cost){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
         const intAmt=ar.filter(a=>a.project_id==='internal').reduce((x,a)=>x+(+a.amount_twd||0),0);
-        const tip='已發生（實際分帳）&#10;'+ar.map(a=>(SHORT[a.project_id]||(prmap[a.project_id]||{}).name||a.project_id)+' '+k(a.amount_twd)).join('&#10;');
-        const txt=fund?(intAmt>500?k(intAmt):'0'):(cost?k(cost):'—');
+        const loeSum=ar.reduce((x,a)=>x+(+a.loe_pct||0),0);
+        const tip='已發生（實際分帳）&#10;'+ar.map(a=>(SHORT[a.project_id]||(prmap[a.project_id]||{}).name||a.project_id)+' '+Math.round(+a.loe_pct||0)+'%｜'+k(a.amount_twd)).join('&#10;');
+        const txt=fund?(intAmt>500?k(intAmt):'0'):(ar.length?String(Math.round(loeSum)):'—');
         const cls=fund?(intAmt<=500?'fG':intAmt>=cost-500?'fR':'fY'):'';
         h+=`<td><span class="cell num uAct ${cls}" title="${tip}" onclick="event.stopPropagation();toast('這是已經發生的紀錄，不能修改')">${txt}</span></td>`;
         if(fund)intMonth[m]+=intAmt;
@@ -1278,7 +1279,7 @@ function vPerson(pid){
       if(isActualM(m)){ // B23：已發生月份顯示實際金額，唯讀
         const ac=DB.allocations.find(x=>x.layer==='actual'&&x.person_id===pid&&x.month===m&&x.project_id===pr);
         if(!ac){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-        h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${k(ac.amount_twd)}</span></td>`;
+        h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${Math.round(+ac.loe_pct||0)}%｜${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${Math.round(+ac.loe_pct||0)}</span></td>`;
         return}
       const a=W.find(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const pd=pending[[pid,m,pr].join('|')];
