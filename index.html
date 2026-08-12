@@ -760,7 +760,16 @@ function lineAllocs(pr,name){
 const PERSCAT=['Salaries','Personnel','Personnel+Fringe','Total'];
 const lineLabel=name=>{
   const n=String(name||'').trim();
-  return (!n||n==='?')?'尚未指定預算線':n.replace(/\*REBUDGET/g,'（預算調整）');
+  if(!n||n==='?')return '尚未指定預算線';
+  const map={
+    'Personnel+Fringe (rev 6/24)':'人員與福利（6/24 修訂版）',
+    'FH-CDM Personnel (ceiling?)':'FH-CDM 人事費（上限待確認）',
+    'CITW milestones':'CITW 成果付款','B.1 Fringe':'B.1 福利費','C Travel':'C 差旅費',
+    'F Contractual':'F 合約／顧問費','H ODC':'H 其他直接費用',Benefits:'福利費',
+    'Space & Utilities':'辦公空間與水電',Travel:'差旅費',Contractual:'合約／顧問費',
+    'Other Direct Costs':'其他直接費用','Community Fund':'社群基金',Audit:'查核費',
+    'Subrecipient (Freedom House)':'Freedom House 子補助'};
+  return (map[n]||n).replace(/\*REBUDGET/g,'（預算調整）');
 };
 function isPeopleLine(b){
   return PERSCAT.includes(b.category)||lineAllocs(b.project_id,b.name).length>0;
@@ -771,6 +780,9 @@ function categoryLabel(category){
     Contractual:'合約／顧問',ODC:'其他直接費用','Fixed-price':'按成果支付'};
   return map[category]||category||'未分類';
 }
+const lineKindLabel=b=>['Benefits','Fringe'].includes(b.category)?'福利費':categoryLabel(b.category)+'（業務費）';
+const expenseItemLabel=item=>String(item||'').replace(/福利派生（即時）/g,'福利（系統即時計算）')
+  .replace(/questionable 福利轉入（PO 核准後）/g,'待 NED 承辦人確認的福利（確認後才列入）');
 function lineBurn(b){ // {rem,used,pct,ratio,over,src} in TWD
   const proj=prmap[b.project_id]||{};
   const fx=b.currency!=='TWD'?(+proj.fx||RATES[b.currency]||1):1;
@@ -1174,6 +1186,7 @@ const ST_LABEL={draft:'還沒送',sent:'已送出',pending_po:'等 NED 回覆',e
  active:'進行中',pipeline:'還在談',closing:'收尾中'};
 const stLabel=v=>ST_LABEL[v]||v;
 const deadlineLabel=v=>v==='immediately'?'越快越好':(v||'尚未設定');
+const taskTitle=g=>g.id==='G3'?'確認 NED 合約附件 A 中，每個人在指定工作區塊的工作比例':g.title;
 function internalNote(note){
   if(!note)return '';
   return `<details class="inlineNote"><summary>查看內部備註</summary><div>${esc(note)}</div></details>`;
@@ -1289,7 +1302,7 @@ function vMaster(){
       const AJ=M.filter(m=>m>='202608'&&m<='202701');
       const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
       const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
-      return `<br>🔗 <b>自動核對（Aug–1月）</b>：薪資實 ＋ 未定另計 ＋ 福利 ＋ 非人事 ＝ ${money(chain.toLocaleString('zh-TW'))} ↔ KPI 算出來的數 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
+      return `<br>🔗 <b>自動核對（8月–1月）</b>：上面四列加總 ${money(chain.toLocaleString('zh-TW'))} ↔ 本版本預計總額 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
     :'<p class="note">格子裡的數字＝那個人那個月的<abbr title="工作比例：一個人某個月有多少比例的時間放在這個案子上。100%＝全職都在這個案子。" style="text-decoration:underline dotted;cursor:help">工作比例</abbr>。紅色＝還有時間沒安排工作；虛線框＝這個安排還沒確定；⏳＝有人提了修改建議還沒處理。點一列看那個人的細節。</p>';
   h+=farNote();
   return h;
@@ -1430,7 +1443,7 @@ function vProject(pr){
       const isPers=isPeopleLine(b);
       const burn=lineBurn(b);const{used,over}=burn; // B24-3/4：沒有人力配置的線改用支出計劃
       const jl=+b.july_draw_twd||0;const sched=Math.max(0,used-jl);
-      h+=`<tr class="click" onclick="location.hash='#line/${encodeURIComponent(pr+'||'+b.name)}'"><td>${b.name}${b.provisional?'<span class="prov-badge">待文件</span>':''}${isPers?'':'<span style="color:var(--ink3);font-size:10.5px">（業務費）</span>'}</td>
+      h+=`<tr class="click" onclick="location.hash='#line/${encodeURIComponent(pr+'||'+b.name)}'"><td>${esc(lineLabel(b.name))}${b.provisional?'<span class="prov-badge">待文件</span>':''}${isPers?'':`<span style="color:var(--ink3);font-size:10.5px">（${lineKindLabel(b)}）</span>`}</td>
        <td class="num" title="原幣顯示，不隨幣別切換換算">${origMoney(+b.remaining_orig,b.currency)}</td>
        <td class="num">${jl?k(jl):'—'}</td><td class="num">${sched?k(sched):'—'}</td>
        <td>${burnMeter(burn)}</td>
@@ -1450,13 +1463,13 @@ function vProject(pr){
     gkeys.forEach(gk=>{
       const rows=grps[gk];
       const bl=gk.startsWith('cat|')?null:DB.budget_lines.find(b=>b.id===gk);
-      const label=bl?bl.name:categoryLabel(rows[0]?rows[0].category:gk.slice(4))+'（尚未指定預算線）';
+      const label=bl?lineLabel(bl.name):categoryLabel(rows[0]?rows[0].category:gk.slice(4))+'（尚未指定預算線）';
       let tot=0;
       h+=`<tr><td><b>${esc(label)}</b>${bl&&bl.ring_fence?`<span class="pill">${bl.ring_fence} 不動</span>`:''}</td>`;
       M.forEach(m=>{
         const cell=rows.filter(e=>e.month===m);
         const sum=cell.reduce((s,e)=>s+ +e.amount_twd,0);tot+=sum;
-        const tip=cell.map(e=>`${esc(e.item||e.category)} ${Math.round(e.amount_twd/1000)}k（${e.payer==='internal'?'DTL 存金':'補助款'}）`).join('&#10;');
+        const tip=cell.map(e=>`${esc(expenseItemLabel(e.item||categoryLabel(e.category)))} ${Math.round(e.amount_twd/1000)}k（${e.payer==='internal'?'DTL 存金':'補助款'}）`).join('&#10;');
         h+=`<td><span class="cell num ${isAdmin()?'capEdit':''} ${cell.some(e=>e.payer==='internal')?'fY':''} ${m>FARM?'uFar':''}"
           ${isAdmin()?`onclick="frmExp('${pr}','${gk.replace(/'/g,"\\'")}','${m}')"`:''}
           title="${tip||(isAdmin()?'點擊新增本月支出':'')}${sealTip(pr,m)}">${sum>0.5?kExp(sum):(isAdmin()?'＋':'·')}${sealMark(pr,m)}</span></td>`;
@@ -1538,8 +1551,8 @@ function vLines(){
     const key=encodeURIComponent(b.project_id+'||'+b.name);
     h+=`<tr class="click" onclick="location.hash='#line/${key}'">
       <td><b style="color:var(${PC[b.project_id]||'--ink'})">${SHORT[b.project_id]||b.project_id}</b></td>
-      <td>${b.name}${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可挪用</span>`:''}</td>
-      <td>${isPers?categoryLabel(b.category):`<span style="color:var(--ink3)">${categoryLabel(b.category)}（業務費）</span>`}</td>
+      <td>${esc(lineLabel(b.name))}${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可挪用</span>`:''}</td>
+      <td>${isPers?categoryLabel(b.category):`<span style="color:var(--ink3)">${lineKindLabel(b)}</span>`}</td>
       <td class="num">${origMoney(+b.remaining_orig,b.currency)}</td>
       <td>${burnMeter(burn)}</td>
       <td>${isPers?(mapped?(seats.map(pid=>pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid).join('、')||'<span style="color:var(--warn)">尚未安排人</span>'):'<span style="color:var(--ink3)" title="本案尚未逐線對應人力，請看案子頁">尚無資料</span>'):'<span style="color:var(--ink3)">不適用</span>'}</td>
@@ -1568,7 +1581,7 @@ function vLine(keyEnc){
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <a href="#lines" class="hbtn" style="text-decoration:none">≡ 所有職位</a>
     <a href="#project/${pr}" class="hbtn" style="text-decoration:none;color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</a>
-    <b>${name}</b>${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可挪用</span>`:''}
+    <b>${esc(lineLabel(name))}</b>${b.provisional?'<span class="prov-badge">未定</span>':''}${b.ring_fence?`<span class="pill">不可挪用</span>`:''}
     <span class="pill num" title="原幣，不隨幣別切換">${origMoney(+b.remaining_orig,b.currency)||'（金額隱藏）'}</span>
     <span class="num" style="font-size:12px;color:${over?'var(--crit)':'var(--ink2)'}">7月起已安排 ${k(used)||'0'}（${Math.round(ratio)}%）${over?'⚠ 超出預算':''}</span>
     ${isAdmin()?`<button class="hbtn" onclick="frmLineBudget('${pr}','${name.replace(/'/g,"\\'")}')">✎ 改預算額</button>`:''}
@@ -1593,7 +1606,7 @@ function vLine(keyEnc){
 window.frmSeat=(pr,name)=>{
   const now=nowMonth();
   const defFrom=M.includes(now)?now:M[0];
-  openForm('安排接替／加入：'+(SHORT[pr]||(prmap[pr]||{}).name||pr)+'｜'+name,[
+  openForm('安排接替／加入：'+(SHORT[pr]||(prmap[pr]||{}).name||pr)+'｜'+lineLabel(name),[
     {id:'pid',label:'人員',type:'select',value:'',options:[['','（選擇人員）'],...DB.people.filter(p=>p.id!=='tara').map(p=>[p.id,(p.alias||p.name)+(p.provisional?'（未定）':'')])]},
     {id:'from',label:'起月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
     {id:'to',label:'迄月',type:'select',value:defFrom,options:M.map(x=>[x,ML[x]])},
@@ -1828,7 +1841,7 @@ function vCompare(cmpId){
       const ed=M.reduce((s,m)=>{const e=expInt(targetId,m);return s+e.ben+e.np},0);
       return `<tr><td>福利＋非人事（存金）</td><td class="num">${k(eo)||'0'}</td><td class="num">${k(ed)||'0'}</td><td class="num">${dTag(ed-eo)}</td></tr>
       <tr><td><b>我們自己要出的總額</b></td><td class="num"><b>${k(mo.internal+eo)||'0'}</b></td><td class="num"><b>${k(md.internal+ed)||'0'}</b></td><td class="num">${dTag((md.internal+ed)-(mo.internal+eo))}</td></tr>`})()}
-    <tr><td>排太滿格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
+    <tr><td>超過工時上限的格數</td><td class="num">${mo.over}</td><td class="num">${md.over}</td><td class="num">${dN(md.over-mo.over)}</td></tr>
     <tr><td>總配置金額</td><td class="num">${k(mo.total)}</td><td class="num">${k(md.total)}</td><td class="num">${dTag(md.total-mo.total)}</td></tr>
     ${(()=>{const ro=runwayOf(baseId),rd2=runwayOf(targetId);
       if(ro&&rd2){
@@ -1912,7 +1925,7 @@ function vAmend(){
   <h2>需要和 NED 確認的改動</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>資助單位</th><th>要做什麼</th><th>內容</th><th>金額</th><th>進度</th></tr></thead><tbody>`;
   DB.amendment_items.forEach(a=>{h+=`<tr><td class="num">${a.id}</td><td>${a.donor}</td><td>${a.type}</td><td>${a.title}</td><td class="num">${a.amount_twd?k(+a.amount_twd):'—'}</td><td><span class="pill ${a.status}">${stLabel(a.status)}</span></td></tr>`});
   h+=`</tbody></table></div>
-  <h2>待處理的修改建議（前端送出）</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>建議人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
+  <h2>待處理的修改建議</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>時間</th><th>建議人</th><th>對象</th><th>內容</th><th>狀態</th>${isAdmin()?'<th>動作</th>':''}</tr></thead><tbody>`;
   const props=DB.proposals.slice(0,50);
   if(!props.length)h+='<tr><td colspan=7>尚無修改建議</td></tr>';
   props.forEach(x=>{
@@ -1926,9 +1939,9 @@ function vAmend(){
   });
   h+=`</tbody></table></div><p class="note">「接受」＝把這個建議寫進正式資料；「不接受」＝退回並留下理由。接受之後，總表上那格的 ⏳ 就會變成正式數字。</p>
   <h2>還要完成的事</h2><div class="tblwrap"><table><thead><tr><th>#</th><th>要完成什麼</th><th>負責人</th><th>期限</th><th>可能影響</th><th>進度</th></tr></thead><tbody>
-  ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${g.title}</td><td>${g.owner==='CEO'?'執行長':g.owner}</td><td class="num">${deadlineLabel(g.deadline)}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${stLabel(g.status)}</span></td></tr>`).join('')}
+  ${DB.gates.map(g=>`<tr><td class="num">${g.id}</td><td>${taskTitle(g)}</td><td>${g.owner==='CEO'?'執行長':g.owner}</td><td class="num">${deadlineLabel(g.deadline)}</td><td class="num">${g.impact_twd?wan(+g.impact_twd):'—'}</td><td><span class="pill ${g.status==='open'?'pending':'approved'}">${stLabel(g.status)}</span></td></tr>`).join('')}
   </tbody></table></div>
-  <h2><svg class="icon"><use href="#i-lock"/></svg> 已送財報·鎖定</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
+  <h2><svg class="icon"><use href="#i-lock"/></svg> 已送出的財報</h2><div class="tblwrap"><table><thead><tr><th>案</th><th>期間</th><th>報告</th><th>送出日</th><th>登記人</th><th>備註</th></tr></thead><tbody>
   ${SEALS.map(s=>`<tr><td><b style="color:var(${PC[s.project_id]||'--ink'})">${SHORT[s.project_id]||s.project_id}</b></td><td class="num">${+s.period_start.slice(0,4)}/${+s.period_start.slice(4)}–${+s.period_end.slice(0,4)}/${+s.period_end.slice(4)}</td><td>${esc(s.report_name)}</td><td class="num">${s.submitted_at}</td><td>${(s.sealed_by||'').split('@')[0]}</td><td>${esc(s.note||'')}</td></tr>`).join('')||'<tr><td colspan=6>尚無已送財報——等哪天真的把財報寄出去了，那天回來這裡登記一下</td></tr>'}
   </tbody></table></div>
   <div style="margin:-6px 0 14px">${isAdmin()?'<button class="hbtn" onclick="frmSealReg()">＋登記已送財報</button>':''}
