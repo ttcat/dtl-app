@@ -761,10 +761,18 @@ function notesDigest(scope,id,label){ // B16: 逐月完整多段陳列（同事�
 function lineAllocs(pr,name){
   // 鐵律：線的身分＝(project_id, line)——先在案內以名對映，同名異案永不合併
   const projAll=W.filter(a=>a.project_id===pr);
-  const named=projAll.filter(a=>(a.ned_line||'').replace('*REBUDGET','')===name);
-  if(named.length||pr==='ned')return named;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
-  return lines.length===1?projAll:[]; // 無名列且單線案＝結構唯一歸該線
+  const norm=a=>String(a.ned_line||'').replace('*REBUDGET','');
+  const eq=(n,full)=>n===full||(n.length===40&&String(full||'').startsWith(n)); // 40 字截斷容錯（舊資料線名被切斷）
+  const named=projAll.filter(a=>eq(norm(a),name));
+  if(pr==='ned'||lines.length>1)return named;
+  if(lines.length===1){
+    // 單線案：逐列判定——對不上本案唯一線名的列（含舊格式線名如 A.3），結構上唯一歸屬此線。
+    // 修正 2026-08-14：舊邏輯「有任何一列對上名就只回傳那幾列」會把其餘列整批丟掉（SE 少算 4 倍的根因）。
+    const orphans=projAll.filter(a=>!eq(norm(a),lines[0].name));
+    return named.concat(orphans.filter(a=>!named.includes(a)));
+  }
+  return named;
 }
 const PERSCAT=['Salaries','Personnel','Personnel+Fringe','Total'];
 const lineLabel=name=>{
