@@ -1317,9 +1317,11 @@ function vMaster(){
   h+=fund
     ?`<p class="note">這張表在回答：<b>每個人的薪水，那個月是誰付的</b>。綠色＝補助款全額支付；黃色＝一部分要我們自己出（格子裡的數字就是我們出的錢）；紅色＝整份都我們自己出；粗紅框＝有薪水但沒排任何工作（既沒工作也沒錢，最該處理）。按上面「金額」鈕可以把數字遮起來（顏色會留著）。${(()=>{const hd=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;if(!(hd&&hd.aug_jan_internal!=null))return '';
       const AJ=M.filter(m=>m>='202608'&&m<='202701');
-      const chain=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+provMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
+      const chainReal=Math.round(AJ.reduce((s,m)=>s+intMonth[m]+expInt(ACTIVE,m).ben+expInt(ACTIVE,m).np,0));
+      const chainProv=Math.round(AJ.reduce((s,m)=>s+provMonth[m],0));
+      const chain=chainReal+chainProv;
       const kpi=+hd.aug_jan_internal;const ok=Math.abs(chain-kpi)<1000;
-      return `<br>🔗 <b>自動核對（8月–1月）</b>：上面四列加總 ${money(chain.toLocaleString('zh-TW'))} ↔ 本版本預計總額 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
+      return `<br>🔗 <b>自動核對（8月–1月）</b>：「這個月我們自己要出多少」列合計 ${money(chainReal.toLocaleString('zh-TW'))}${chainProv?` ＋「還沒確定要聘的人」列 ${money(chainProv.toLocaleString('zh-TW'))} ＝ ${money(chain.toLocaleString('zh-TW'))}`:''} ↔ 本版本預計總額 ${money(kpi.toLocaleString('zh-TW'))} ${ok?'✅ 吻合（差 '+money(String(chain-kpi))+' 元＝進位）':'⚠ 不吻合，差 '+money(String(chain-kpi))+' 元'}`})()}</p>`
     :'<p class="note">格子裡的數字＝那個人那個月的<abbr title="工作比例：一個人某個月有多少比例的時間放在這個案子上。100%＝全職都在這個案子。" style="text-decoration:underline dotted;cursor:help">工作比例</abbr>。紅色＝還有時間沒安排工作；虛線框＝這個安排還沒確定；⏳＝有人提了修改建議還沒處理。點一列看那個人的細節。</p>';
   h+=farNote();
   return h;
