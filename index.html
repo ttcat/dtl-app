@@ -834,7 +834,7 @@ function lineSeats(b){ // 目前與未來在座者
   const pids=[...new Set(lineAllocs(b.project_id,b.name).filter(a=>a.month>=now&&+a.amount_twd>0).map(a=>a.person_id))];
   return pids;
 }
-// D33 計薪基準待修約白名單：planA Tim 2–6 月（正職→顧問基準錯置，等財務定顧問約）、Copper 2–6 月（原始預算書錯誤，等修約人力表改正）——顯示琥珀色徽章而非紅色超載，數字在定案前不動
+// D33 計薪基準待修約白名單：planA Tim 2–6 月（正職→顧問基準錯置，等財務定顧問約）、Copper 2–6 月（原始預算書錯誤——AIT(DI)，等 AIT 書面修訂改正）——顯示琥珀色徽章而非紅色超載，數字在定案前不動
 const BASIS_PENDING={planA:{tim:['202702','202703','202704','202705','202706'],copper:['202702','202703','202704','202705','202706']}};
 const isBasisPending=(scn,pid,m)=>((BASIS_PENDING[scn]||{})[pid]||[]).includes(m);
 function fundOf(pid,m){ // admin-only: payer composition for one person-month
