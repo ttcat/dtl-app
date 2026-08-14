@@ -70,6 +70,9 @@ td.click{cursor:pointer} td.click:hover{background:var(--rail)}
 .u0{background:color-mix(in oklab,var(--crit) 18%,transparent);color:var(--crit);font-weight:600}
 .uP{outline:1.5px dashed var(--fP);outline-offset:-1.5px}
 .uOver{background:color-mix(in oklab,var(--crit) 30%,transparent);color:var(--crit);font-weight:700;outline:1.5px solid var(--crit);outline-offset:-1.5px}
+.uBasis{background:color-mix(in oklab,var(--warn) 22%,transparent);color:var(--warn);font-weight:700;outline:1.5px dashed var(--warn);outline-offset:-1.5px}
+.fWarn{outline:2px solid var(--crit)!important;outline-offset:-2px}
+.fBasis{outline:2px dashed var(--warn)!important;outline-offset:-2px}
 .fG{background:color-mix(in oklab,var(--good) 22%,transparent)}
 .fY{background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warn);font-weight:600}
 .fR{background:color-mix(in oklab,var(--crit) 26%,transparent);color:var(--crit);font-weight:600}
@@ -831,6 +834,9 @@ function lineSeats(b){ // 目前與未來在座者
   const pids=[...new Set(lineAllocs(b.project_id,b.name).filter(a=>a.month>=now&&+a.amount_twd>0).map(a=>a.person_id))];
   return pids;
 }
+// D33 計薪基準待修約白名單：planA Tim 2–6 月（正職→顧問基準錯置，等財務定顧問約）、Copper 2–6 月（原始預算書錯誤，等修約人力表改正）——顯示琥珀色徽章而非紅色超載，數字在定案前不動
+const BASIS_PENDING={planA:{tim:['202702','202703','202704','202705','202706'],copper:['202702','202703','202704','202705','202706']}};
+const isBasisPending=(scn,pid,m)=>((BASIS_PENDING[scn]||{})[pid]||[]).includes(m);
 function fundOf(pid,m){ // admin-only: payer composition for one person-month
   const rows=personMonth(pid,m);
   const sal=costOf(pid,m);
@@ -1277,15 +1283,20 @@ function vMaster(){
         const provPerson=p.provisional&&p.id!=='newfo'; // D11: 假想人力缺口另計，不混入真實水位
         if(provPerson)provMonth[m]+=f.internal;else intMonth[m]+=f.internal;
         const prov=f.rows.some(a=>a.provisional);
+        // D33/F10：付款人顏色與超載警示並存——資金視圖不得吞掉負載警示
+        const lo=loeOf(p.id,m);
+        const over=lo.used>lo.cap+0.5;
+        const basisPend=over&&isBasisPending(ACTIVE,p.id,m);
         const tip=f.rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')
           +(f.gap>0.5?`&#10;⚠ 沒人付的部分 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'')
+          +(over?(basisPend?'&#10;⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植':`&#10;⚠ 超過工時上限 ${lo.cap}%（目前合計 ${Math.round(lo.used)}%）`):'')
           +(provPerson?'&#10;（還沒確定要聘的人，列於下方另計列）':'');
         let cls,txt;
         if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
-        else if(f.internal<=500){cls='fG';txt=Math.round(loeOf(p.id,m).used)}
+        else if(f.internal<=500){cls='fG';txt=Math.round(lo.used)}
         else if(f.internal>=f.sal-500||f.grant<=500){cls='fR';txt=k(f.internal)}
         else{cls='fY';txt=k(f.internal)}
-        h+=`<td><span class="cell num ${cls} ${(prov||provPerson)?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
+        h+=`<td><span class="cell num ${cls} ${over?(basisPend?'fBasis':'fWarn'):''} ${(prov||provPerson)?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
         return;
       }
       const{used,cap,rows,active}=loeOf(p.id,m);
@@ -1293,9 +1304,10 @@ function vMaster(){
       const prov=rows.some(a=>a.provisional);
       const hasPend=rows.some(a=>pendingAt(p.id,m,a.project_id,a.ned_line)||pendingAt(p.id,m,a.project_id));
       const over=used>cap+0.5;
-      const cls=over?'uOver':used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
+      const basisPend=over&&isBasisPending(ACTIVE,p.id,m);
+      const cls=over?(basisPend?'uBasis':'uOver'):used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
       const nt=noteOf('person',p.id,m);
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?'⚠ 超過他的工時上限 '+cap+'%&#10;':''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?(basisPend?'⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植&#10;':'⚠ 超過他的工時上限 '+cap+'%&#10;'):''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
     });
     h+='</tr>';
   });
