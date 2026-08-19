@@ -1373,13 +1373,20 @@ function mySummary(pid){
 }
 function vPerson(pid){
   pid=pid&&pmap[pid]?pid:'jasper';const p=pmap[pid];
-  const sel=`<select onchange="location.hash='#person/'+this.value">${DB.people.map(x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${x.alias||x.name}（${x.name}）</option>`).join('')}</select>`;
+  const optOf=x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${x.alias&&x.alias!==x.name?x.alias+'（'+x.name+'）':(x.alias||x.name)}</option>`;
+  const hasPlanOf=x=>DB.staffing.some(r=>r.scenario_id===ACTIVE&&r.person_id===x.id&&+r.cost>0);
+  const gAct=DB.people.filter(x=>!x.provisional&&hasPlanOf(x));
+  const gHist=DB.people.filter(x=>!x.provisional&&!hasPlanOf(x));
+  const gProv=DB.people.filter(x=>x.provisional);
+  const sel=`<select onchange="location.hash='#person/'+this.value"><optgroup label="在職">${gAct.map(optOf).join('')}</optgroup>${gHist.length?`<optgroup label="已離職／僅歷史資料">${gHist.map(optOf).join('')}</optgroup>`:''}${gProv.length?`<optgroup label="空缺與招募中">${gProv.map(optOf).join('')}</optgroup>`:''}</select>`;
+  const plannedMonths=new Set(DB.staffing.filter(r=>r.scenario_id===ACTIVE&&r.person_id===pid&&+r.cost>0).map(r=>r.month));
+  const isDeparted=!plannedMonths.size&&!p.provisional;
   const evs=DB.contract_events.filter(e=>e.person_id===pid);
   const prjs=[...new Set(W.filter(a=>a.person_id===pid).map(a=>a.project_id))].filter(pr=>pr!=='internal');
   if(prmap.internal)prjs.push('internal'); // 即使本版本目前為 0，也保留入口讓管理者安排自有存款
   let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
     <span class="pill">${p.type==='employee'?'員工':p.type==='contractor'?'顧問':'時薪'}</span>
-    <span class="pill num">工時上限 ${capOf(pid,M[0])}%</span>
+    ${isDeparted?'<span class="pill" style="color:var(--warn);border-color:var(--warn)">已離職——只有歷史紀錄，沒有未來安排</span>':`<span class="pill num">工時上限 ${capOf(pid,M[0])}%</span>`}
     ${p.provisional?'<span class="prov-badge">還沒確定要聘的人</span>':''}
     <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
     ${isAdmin()?`<button class="hbtn" onclick="frmDate('${pid}','hire')">設到職日</button><button class="hbtn" onclick="frmDate('${pid}','departure')">設離職日</button>`:''}
@@ -1432,6 +1439,7 @@ function vPerson(pid){
   h+='</tr>';
   h+=`<tr><td><b>工時上限</b>${isAdmin()?'<span class="tag">點格可改</span>':''}</td>`;
   M.forEach(m=>{
+    if(!isActualM(m)&&!plannedMonths.has(m)){h+='<td><span class="cell" style="color:var(--ink3)" title="這個月在目前版本沒有用人安排">—</span></td>';return}
     const c=capOf(pid,m);
     h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="依「${(SCNS.find(s=>s.id===ACTIVE)||{}).name||'目前版本'}」用人表">${c}</span></td>`;
   });
