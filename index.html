@@ -105,6 +105,16 @@ tr.click:hover td:first-child{background:var(--rail)}
 .pill.rejected{color:var(--crit);border-color:var(--crit)}
 .pill.needs_review{color:var(--warn);border-color:var(--warn);border-style:dashed}
 .prov-badge{font-size:10px;border:1px dashed var(--fP);color:var(--ink2);border-radius:4px;padding:0 5px;margin-left:6px}
+.pdir{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.pdir .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pteam{font-size:10px;color:var(--ink3);letter-spacing:.05em;margin-right:2px;white-space:nowrap}
+.pbreak{flex-basis:100%;height:0}
+.pchip{font-size:12.5px;padding:3px 11px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap;color:var(--ink2);background:var(--paper)}
+.pchip:hover{border-color:var(--focus);color:var(--ink)}
+.pchip.psel{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:700}
+.pchip.pvac{border-style:dashed;color:var(--warn);border-color:var(--warn)}
+.pchip.pvac i{font-style:normal;font-size:10px;margin-left:4px;opacity:.85}
+.pchip.pdep{opacity:.5}.pchip.pdep.psel{opacity:1}
 .bar{height:14px;background:var(--rail);border-radius:4px;position:relative;overflow:hidden;min-width:140px}
 .bar i{position:absolute;top:0;bottom:0;left:0;background:var(--fN);border-radius:4px 0 0 4px}
 .bar i.over{background:var(--crit)}
@@ -1373,19 +1383,28 @@ function mySummary(pid){
 }
 function vPerson(pid){
   pid=pid&&pmap[pid]?pid:'jasper';const p=pmap[pid];
-  const optOf=x=>`<option value="${x.id}" ${x.id===pid?'selected':''}>${x.alias&&x.alias!==x.name?x.alias+'（'+x.name+'）':(x.alias||x.name)}</option>`;
   const hasPlanOf=x=>DB.staffing.some(r=>r.scenario_id===ACTIVE&&r.person_id===x.id&&+r.cost>0);
   const gAct=DB.people.filter(x=>!x.provisional&&hasPlanOf(x));
   const gHist=DB.people.filter(x=>!x.provisional&&!hasPlanOf(x));
   const gProv=DB.people.filter(x=>x.provisional);
-  const sel=`<select onchange="location.hash='#person/'+this.value"><optgroup label="在職">${gAct.map(optOf).join('')}</optgroup>${gHist.length?`<optgroup label="已離職／僅歷史資料">${gHist.map(optOf).join('')}</optgroup>`:''}${gProv.length?`<optgroup label="空缺與招募中">${gProv.map(optOf).join('')}</optgroup>`:''}</select>`;
+  const chipOf=x=>{const lbl=x.provisional?x.name.replace(/^待補員額-/,''):(x.alias||x.name);
+    const badge=x.provisional?`<i>${((x.alias||'')+(x.note||'')).includes('招募')?'招募中':'空缺'}</i>`:'';
+    return `<span class="pchip ${x.id===pid?'psel':''} ${x.provisional?'pvac':''} ${(!x.provisional&&!hasPlanOf(x))?'pdep':''}" onclick="location.hash='#person/${x.id}'" title="${esc(x.name)}">${esc(lbl)}${badge}</span>`};
+  const TEAMS=['管理','GR','DI','SE','技術','財務','行政','傳播'];
+  const byTeam={};gAct.forEach(x=>{const t=x.team||'其他';(byTeam[t]=byTeam[t]||[]).push(x)});
+  const tkeys=[...TEAMS.filter(t=>byTeam[t]),...Object.keys(byTeam).filter(t=>!TEAMS.includes(t)).sort()];
+  const sel=`<div class="pdir">${tkeys.map(t=>`<span class="grp"><span class="pteam">${t}</span>${byTeam[t].map(chipOf).join('')}</span>`).join('')}
+    ${(gProv.length||gHist.length)?'<span class="pbreak"></span>':''}
+    ${gProv.length?`<span class="grp"><span class="pteam" style="color:var(--warn)">職缺（不是真人，只是預算上的位子）</span>${gProv.map(chipOf).join('')}</span>`:''}
+    ${gHist.length?`<span class="grp"><span class="pteam">已離職／僅歷史資料</span>${gHist.map(chipOf).join('')}</span>`:''}</div>`;
   const plannedMonths=new Set(DB.staffing.filter(r=>r.scenario_id===ACTIVE&&r.person_id===pid&&+r.cost>0).map(r=>r.month));
   const isDeparted=!plannedMonths.size&&!p.provisional;
   const evs=DB.contract_events.filter(e=>e.person_id===pid);
   const prjs=[...new Set(W.filter(a=>a.person_id===pid).map(a=>a.project_id))].filter(pr=>pr!=='internal');
   if(prmap.internal)prjs.push('internal'); // 即使本版本目前為 0，也保留入口讓管理者安排自有存款
-  let h=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${sel}
-    <span class="pill">${p.type==='employee'?'員工':p.type==='contractor'?'顧問':'時薪'}</span>
+  let h=sel+`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <b style="font-size:15px">${esc(p.provisional?p.name.replace(/^待補員額-/,'')+(((p.alias||'')+(p.note||'')).includes('招募')?'（招募中）':'（職缺）'):(p.alias&&p.alias!==p.name?p.alias+'（'+p.name+'）':(p.alias||p.name)))}</b>
+    <span class="pill">${p.provisional?'職缺':p.type==='employee'?'員工':p.type==='contractor'?'顧問':'時薪'}</span>
     ${isDeparted?'<span class="pill" style="color:var(--warn);border-color:var(--warn)">已離職——只有歷史紀錄，沒有未來安排</span>':`<span class="pill num">工時上限 ${capOf(pid,M[0])}%</span>`}
     ${p.provisional?'<span class="prov-badge">還沒確定要聘的人</span>':''}
     <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
