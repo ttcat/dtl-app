@@ -1410,6 +1410,20 @@ function vPerson(pid){
     <button class="hbtn" onclick="navigator.clipboard.writeText(location.origin+location.pathname+'#person/${pid}').then(()=>this.textContent='已複製 ✓')">分享我的頁面</button>
     ${isAdmin()?`<button class="hbtn" onclick="frmDate('${pid}','hire')">設到職日</button><button class="hbtn" onclick="frmDate('${pid}','departure')">設離職日</button>`:''}
     <span style="font-size:12px;color:var(--ink3)">${p.note||''}</span></div>`;
+  { // 佔用的職位（人 ↔ 職位是兩回事：這裡列出這個人現在佔了哪些案子的哪些位子，跨案重疊一眼可見）
+    const seats={};W.filter(a=>a.person_id===pid&&+a.amount_twd>0&&a.ned_line).forEach(a=>{
+      const key=a.project_id+'||'+String(a.ned_line).replace('*REBUDGET','');
+      (seats[key]=seats[key]||[]).push(a.month)});
+    const seatChips=Object.entries(seats).map(([key,ms])=>{
+      const[q,nm]=key.split('||');ms.sort();
+      const lbl=`${SHORT[q]||q}·${lineLabel(nm)}`;
+      const rng=`${+ms[0].slice(0,4)}/${+ms[0].slice(4)}–${+ms[ms.length-1].slice(0,4)}/${+ms[ms.length-1].slice(4)}`;
+      const linked=isAdmin()&&DB.budget_lines.some(b=>b.project_id===q&&b.name===nm);
+      return linked
+        ?`<a class="pchip" style="text-decoration:none" href="#line/${encodeURIComponent(q+'||'+nm)}" title="${rng}">${esc(lbl)}</a>`
+        :`<span class="pchip" style="cursor:default" title="${rng}${DB.budget_lines.some(b=>b.project_id===q&&b.name===nm)?'':'（修約中／尚未建線）'}">${esc(lbl)}</span>`}).join('');
+    if(seatChips)h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px"><span class="pteam">佔用的職位（點進去看整個位子被誰用）</span>${seatChips}</div>`;
+  }
   h+=mySummary(pid);
   if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
   h+=yearJump();
@@ -1653,6 +1667,7 @@ function vLine(keyEnc){
     ${isAdmin()?`<button class="hbtn" onclick="frmSeat('${pr}','${name.replace(/'/g,"\\'")}')">＋安排接替／加入</button>`:''}</div>
   <div class="tblwrap"><table><thead><tr><th>在座者</th>${thead()}</tr></thead><tbody>`;
   if(!pids.length)h+=`<tr><td colspan="${M.length+1}">目前還沒有安排人${pr!=='ned'&&DB.budget_lines.filter(x=>x.project_id===pr).length>1?'（這個案子尚未完成逐線對應）':''}${isAdmin()?'；可用「＋安排接替／加入」新增。':''}</td></tr>`;
+  const inLine=new Set(allocs.map(x=>x.id));
   pids.forEach(pid=>{
     const p=pmap[pid]||{};
     h+=`<tr><td class="click" onclick="location.hash='#person/${pid}'"><b>${p.alias||p.name||pid}</b>${p.provisional?'<span class="prov-badge">未定</span>':''}</td>`;
@@ -1663,9 +1678,23 @@ function vLine(keyEnc){
       h+=`<td><span class="cell num u100 ${a.provisional?'uP':''} ${m>FARM?'uFar':''}" title="${k(+a.amount_twd)}">${l}</span></td>`;
     });
     h+='</tr>';
+    // 跨案重疊：這個人同一個月在其他案子／其他職位還佔了多少（人 ↔ 職位分離的另一面）
+    const olap=M.map(m=>{
+      const others=W.filter(x=>x.person_id===pid&&x.month===m&&+x.amount_twd>0&&!inLine.has(x.id));
+      if(!others.length)return null;
+      const byPr={};others.forEach(x=>{byPr[x.project_id]=(byPr[x.project_id]||0)+(+x.loe_pct||0)});
+      const tot=Math.round(Object.values(byPr).reduce((s,v)=>s+v,0));
+      const tip=others.map(x=>`${SHORT[x.project_id]||x.project_id}${x.ned_line?'·'+esc(lineLabel(String(x.ned_line).replace('*REBUDGET',''))):''} ${Math.round(+x.loe_pct||0)}%`).join('&#10;');
+      return{tot,tip};
+    });
+    if(olap.some(Boolean)){
+      h+=`<tr><td style="color:var(--ink3);font-size:11px;padding-left:18px">↳ 同月的其他工作</td>`;
+      olap.forEach(o=>{h+=o?`<td><span class="cell num" style="color:var(--ink3);font-size:11px" title="${o.tip}">${o.tot}</span></td>`:'<td><span class="cell" style="color:var(--ink3)">·</span></td>'});
+      h+='</tr>';
+    }
   });
   h+=`</tbody></table></div>
-  <p class="note">一列＝一個人做這個職位的期間（格子裡是他那個月的工作比例）。同一個月出現兩列＝交接期間兩個人同時在這個職位上，這是正常的。按「安排接替」可以排下一個人接手——送出的是建議，要由你或財務在「待辦與死線」頁按接受；系統會先幫你檢查那個人會不會排太滿、這條線的錢夠不夠。</p>${farNote()}`;
+  <p class="note">一列＝一個人做這個職位的期間（格子裡是那個月的工作比例）。同一個月出現兩列＝交接期間兩個人同時在這個職位上，這是正常的。灰色的「↳ 同月的其他工作」列顯示在座者同月在其他案子／職位的比例——職位跟人是分開的兩件事：一個人可以同時佔好幾個案子的位子，滑過灰字可以看是哪些。按「安排接替」可以排下一個人接手——送出的是建議，要由你或財務在「待辦與死線」頁按接受；系統會先幫你檢查那個人會不會排太滿、這條線的錢夠不夠。</p>${farNote()}`;
   return h;
 }
 window.frmSeat=(pr,name)=>{
