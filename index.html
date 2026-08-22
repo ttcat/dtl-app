@@ -778,6 +778,11 @@ function lineAllocs(pr,name){
   const norm=a=>String(a.ned_line||'').replace('*REBUDGET','');
   const eq=(n,full)=>n===full||(n.length===40&&String(full||'').startsWith(n)); // 40 字截斷容錯（舊資料線名被切斷）
   const named=projAll.filter(a=>eq(norm(a),name));
+  if(pr==='hrf'&&lines.length>1){
+    // FH 合約人事只有合計線（個別薪資簽署版遮蔽）：所有非 E.x（ODC）配置一律歸 Personnel 合計線
+    if(/^Personnel/.test(name))return projAll.filter(a=>!/^E\./.test(norm(a)));
+    return named;
+  }
   if(pr==='ned'||lines.length>1)return named;
   if(lines.length===1){
     // 單線案：逐列判定——對不上本案唯一線名的列（含舊格式線名如 A.3），結構上唯一歸屬此線。
@@ -792,8 +797,14 @@ const lineLabel=name=>{
   const n=String(name||'').trim();
   if(!n||n==='?')return '尚未指定預算線';
   const map={
-    'Personnel+Fringe (rev 6/24)':'人員與福利（6/24 修訂版）',
-    'FH-CDM Personnel (ceiling?)':'FH-CDM 人事費（上限待確認）',
+    'Personnel+Fringe (rev 6/24)':'人員與福利（6/24 修訂版·舊快照）',
+    'FH-CDM Personnel (ceiling?)':'FH-CDM 人事費（舊快照）',
+    'Personnel (A.1–A.6)':'人事費合計（A.1–A.6，個別薪資合約遮蔽）',
+    'Other Direct Costs (E.1–E.7)':'業務費（伺服器／雲端／房租 8%）',
+    'A.1/A.2 Machine Learning Engineer':'A.1/A.2 機器學習工程師（維運＋開發）',
+    'B.1 Tax/Bonus/Insurance':'B.1 稅／年終／保險',
+    'E Contractual (E.1–E.8)':'E 合約費（講者／攝影／設計／網紅合作）',
+    'G Other Direct Costs':'G 其他直接費用（場地／餐飲）',
     'CITW milestones':'CITW 成果付款','B.1 Fringe':'B.1 福利費','C Travel':'C 差旅費',
     'F Contractual':'F 合約／顧問費','H ODC':'H 其他直接費用',Benefits:'福利費',
     'Space & Utilities':'辦公空間與水電',Travel:'差旅費',Contractual:'合約／顧問費',
