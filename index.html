@@ -298,7 +298,8 @@ const thead=()=>M.map(m=>`<th ${(m===M[0]||m.slice(4)==='01')?`id="mcol_${m.slic
 const yearJump=()=>{const ys=[...new Set(M.map(m=>m.slice(0,4)))];
   return ys.length>1?`<div style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><span class="note" style="margin:0">跳至：</span>${ys.map(y=>`<button class="hbtn num" onclick="jumpYear('${y}')">${y}</button>`).join('')}</div>`:''};
 const farNote=()=>M[M.length-1]>FARM?`<p class="note">${(+FARM.slice(0,4))}年${+FARM.slice(4)}月之後的安排都還只是<b>初步規劃</b>（超過一年以後的事），格子用虛線框表示；還在談的案子會另外用「打折後的估計」算，不是承諾一定會有的錢。</p>`:'';
-const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'DTL 自有存款'};
+const SHORT={ned:'NED',di:'AIT(DI)',se:'AIT(SE)',hrf:'HRF',otf:'OTF',gr:'AIT(GR)',ned2027:'NED新期',pipeA:'新案A',pipeB:'新案B',internal:'DTL 自有存款',
+  osf:'OSF',ait_stratcom:'AIT Stratcom',article19:'Article19',dsta:'DSTA',eu_ndici:'EU',german_mofa:'德國MOFA',internews:'Internews',ned2024:'NED2024',donation2026:'勸募'};
 const PC={ned:'--fN',di:'--fDI',se:'--fSE',hrf:'--fH',otf:'--fO',ned2027:'--fP',pipeA:'--fP',pipeB:'--fP',internal:'--crit'};
 let ROLE=null;
 let MASK=localStorage.getItem('cr_mask')==='1';
