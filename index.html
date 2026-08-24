@@ -1394,7 +1394,10 @@ function mySummary(pid){
 }
 function vPerson(pid){
   pid=pid&&pmap[pid]?pid:'jasper';const p=pmap[pid];
-  const hasPlanOf=x=>DB.staffing.some(r=>r.scenario_id===ACTIVE&&r.person_id===x.id&&+r.cost>0);
+  // 在職判定（B30）：staffing 有編 或 本版本有配置 或 主檔月成本>0（顧問如 Tara 不進 staffing，不能靠單一表判）
+  const hasPlanOf=x=>DB.staffing.some(r=>r.scenario_id===ACTIVE&&r.person_id===x.id&&+r.cost>0)
+    ||W.some(a=>a.person_id===x.id&&+a.amount_twd>0)
+    ||Object.values(x.monthly_cost||{}).some(v=>+v>0);
   const gAct=DB.people.filter(x=>!x.provisional&&hasPlanOf(x));
   const gHist=DB.people.filter(x=>!x.provisional&&!hasPlanOf(x));
   const gProv=DB.people.filter(x=>x.provisional);
@@ -1409,9 +1412,13 @@ function vPerson(pid){
     ${gProv.length?`<span class="grp"><span class="pteam" style="color:var(--warn)">職缺（不是真人，只是預算上的位子）</span>${gProv.map(chipOf).join('')}</span>`:''}
     ${gHist.length?`<span class="grp"><span class="pteam">已離職／僅歷史資料</span>${gHist.map(chipOf).join('')}</span>`:''}</div>`;
   const plannedMonths=new Set(DB.staffing.filter(r=>r.scenario_id===ACTIVE&&r.person_id===pid&&+r.cost>0).map(r=>r.month));
-  const isDeparted=!plannedMonths.size&&!p.provisional;
+  const isDeparted=!p.provisional&&!hasPlanOf(p); // B30：與名冊分組同一判準（staffing/配置/主檔月成本三選一）
   const evs=DB.contract_events.filter(e=>e.person_id===pid);
-  const prjs=[...new Set(W.filter(a=>a.person_id===pid).map(a=>a.project_id))].filter(pr=>pr!=='internal');
+  // 案子列＝計劃層 ∪ 已發生層（B30：只列計劃層會讓 H1 結束案（OSF/GR…）整條隱形、但合計有算——71+3=100 之謎）
+  const prjs=[...new Set([
+    ...W.filter(a=>a.person_id===pid).map(a=>a.project_id),
+    ...DB.allocations.filter(a=>a.layer==='actual'&&a.person_id===pid&&+a.amount_twd!==0).map(a=>a.project_id)
+  ])].filter(pr=>pr!=='internal');
   if(prmap.internal)prjs.push('internal'); // 即使本版本目前為 0，也保留入口讓管理者安排自有存款
   let h=sel+`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <b style="font-size:15px">${esc(p.provisional?p.name.replace(/^待補員額-/,'')+(((p.alias||'')+(p.note||'')).includes('招募')?'（招募中）':'（職缺）'):(p.alias&&p.alias!==p.name?p.alias+'（'+p.name+'）':(p.alias||p.name)))}</b>
