@@ -1872,7 +1872,7 @@ function scnCard(s,mx){
   return h;
 }
 function vScenarios(){
-  const head=`<thead><tr><th>修改建議／版本</th><th>狀態</th><th>作者</th><th>日期</th><th>總配置</th><th>DTL 存金投入</th><th>超過工時上限</th><th>涉及案子</th><th>備註</th></tr></thead>`;
+  const head=`<thead><tr><th>修改建議／版本</th><th>狀態</th><th>作者</th><th>日期</th><th title="整個時間軸的用人配置總額（所有案）">總配置</th><th title="口徑：只算「薪資」由存金支付的部分，涵蓋整個時間軸——與首頁 KPI（8月–1月，含福利與非人事）口徑不同。新計劃 8月起薪資零存金＝這欄接近 0 是設計結果">薪資走存金(全期)</th><th>超過工時上限</th><th>涉及案子</th><th>備註</th></tr></thead>`;
   const snapBtn=`<div style="display:flex;gap:8px;align-items:center;margin:0 0 8px">
     <button class="hbtn" onclick="manualSnapshot()">📸 立即存檔</button>
     <span class="note" style="margin:0">每月首筆正式版修改會自動留存上月狀態；大改前也可手動留檔。存檔只供比較、不可採用。</span></div>`;
