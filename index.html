@@ -1458,7 +1458,8 @@ function vPerson(pid){
       return linked
         ?`<a class="pchip" style="text-decoration:none" href="#line/${encodeURIComponent(q+'||'+nm)}" title="${rng}">${esc(lbl)}</a>`
         :`<span class="pchip" style="cursor:default" title="${rng}${DB.budget_lines.some(b=>b.project_id===q&&b.name===nm)?'':'（修約中／尚未建線）'}">${esc(lbl)}</span>`}).join('');
-    if(seatChips)h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px"><span class="pteam">佔用的職位（點進去看整個位子被誰用）</span>${seatChips}</div>`;
+    const moveBtn=isAdmin()&&Object.keys(seats).length?`<button class="hbtn" style="padding:2px 9px;font-size:11px" onclick="frmMoveLine('${pid}')">✎ 換職位</button>`:'';
+    if(seatChips)h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px"><span class="pteam">佔用的職位（點進去看整個位子被誰用）</span>${seatChips}${moveBtn}</div>`;
   }
   h+=mySummary(pid);
   if(evs.length)h+=`<p class="note">合約事件：${evs.map(e=>`${e.date} ${e.note}`).join('｜')}</p>`;
@@ -1746,6 +1747,32 @@ function vLine(keyEnc){
   <p class="note">一列＝一個人做這個職位的期間（格子裡是那個月的工作比例）。同一個月出現兩列＝交接期間兩個人同時在這個職位上，這是正常的。灰色的「↳ 同月的其他工作」列顯示在座者同月在其他案子／職位的比例——職位跟人是分開的兩件事：一個人可以同時佔好幾個案子的位子，滑過灰字可以看是哪些。按「安排接替」可以排下一個人接手——送出的是建議，要由你或財務在「待辦與死線」頁按接受；系統會先幫你檢查那個人會不會排太滿、這條線的錢夠不夠。</p>${farNote()}`;
   return h;
 }
+// B39：個人頁「換職位」——把此人在某案某線的配置（指定月份範圍）整批改掛到同案另一條線；只在草稿版直接生效（正式版請先開草稿）
+window.frmMoveLine=(pid)=>{
+  if(ACTIVE===OFFICIAL||!canEditScn()){toast('換職位只能在你自己的草稿版本做——請先「＋開新版本」複製目前版本再改');return}
+  const mine=W.filter(a=>a.person_id===pid&&+a.amount_twd>0&&a.ned_line);
+  const seatOpts=[...new Set(mine.map(a=>a.project_id+'||'+String(a.ned_line).replace('*REBUDGET','')))]
+    .map(k=>{const[q,nm]=k.split('||');return[k,`${SHORT[q]||q}·${lineLabel(nm)}`]});
+  if(!seatOpts.length){toast('這個人目前沒有掛在任何預算線上');return}
+  const p=pmap[pid]||{};
+  openForm('換職位：'+(p.alias||p.name),[
+    {id:'from',label:'現在的職位',type:'select',value:seatOpts[0][0],options:seatOpts},
+    {id:'to',label:'改掛到（同一案的線）',type:'select',value:'',options:[['','（先選現在的職位）'],...DB.budget_lines.filter(b=>isPeopleLine(b)).map(b=>[b.project_id+'||'+b.name,`${SHORT[b.project_id]||b.project_id}·${lineLabel(b.name)}｜剩 ${origMoney(+b.remaining_orig,b.currency)}`])]},
+    {id:'m1',label:'起月',type:'select',value:M[0],options:M.map(x=>[x,ML[x]])},
+    {id:'m2',label:'迄月',type:'select',value:M[M.length-1],options:M.map(x=>[x,ML[x]])},
+    {id:'reb',label:'標記為修約項（這條線目前核准額不夠，要靠修約補）',type:'select',value:'0',options:[['0','否'],['1','是（線名加 *REBUDGET）']]},
+  ],async v=>{
+    const[fq,fn]=String(v.from).split('||');const[tq,tn]=String(v.to||'').split('||');
+    if(!tn)throw new Error('請選要改掛到哪條線');
+    if(tq!==fq)throw new Error('只能換到同一個案子的線（'+(SHORT[fq]||fq)+'）——跨案請用格子編輯改比例');
+    if(v.m2<v.m1)throw new Error('迄月不可早於起月');
+    const target=tn+(v.reb==='1'?'*REBUDGET':'');
+    const rows=mine.filter(a=>a.project_id===fq&&String(a.ned_line).replace('*REBUDGET','')===fn&&a.month>=v.m1&&a.month<=v.m2);
+    if(!rows.length)throw new Error('這個月份範圍內沒有可改的配置');
+    for(const a of rows)await dbUpd('allocations','id=eq.'+a.id,{ned_line:target});
+    await reload(`已把 ${p.alias||p.name} 在 ${SHORT[fq]||fq} 的 ${rows.length} 個月從「${lineLabel(fn)}」改掛到「${lineLabel(tn)}」`);
+  });
+};
 window.frmSeat=(pr,name)=>{
   const now=nowMonth();
   const defFrom=M.includes(now)?now:M[0];
