@@ -1262,11 +1262,11 @@ function vMaster(){
    ${isAdmin()?(()=>{
      const scnH=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;
      const hd=scnH||DB.settings.headline;
-     const c1=hd&&+hd.fy2026_loss_best
-       ?`<div class="card"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> ${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">定案區間 ${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}（規劃用上限）${hd.swap_finalized?'｜'+money(hd.swap_finalized):''}</div></div>`
-       :hd&&+hd.aug_jan_internal
-       ?`<div class="card crit"><div class="l">${hd.label||'存金投入'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
-       :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
+     // B36：第一張卡對每個版本用同一條公式由引擎計算（1–6月定稿＋7月暫估＋該版本 8–1月存金），不再讀版本手寫的 headline 數字；
+     // headline 只留給驗證器當定錨（F 系列：引擎 vs 定錨），定案文字改為滑過提示
+     const cc=cumOf(ACTIVE), jul=+DB.settings.july_internal_provisional||0, augJan=cc.to2701-cc.h1;
+     const decided=hd&&+hd.fy2026_loss_best?`｜定案區間 ${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}`:'';
+     const c1=`<div class="card" title="${esc((hd&&hd.decisions)||'')}"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 到 2027/1 我們自己要出的錢</div><div class="v num">${wan(cc.to2701+jul)}</div><div class="s">1–6月定稿 ${wan(cc.h1)}＋7月暫估 ${wan(jul)}＋8–1月 ${wan(augJan)}${decided}</div></div>`;
      const rw=runwayOf(ACTIVE);
      const rwCard=rw
        ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開 DTL 存金變化圖"><div class="l"><svg class="icon"><use href="#i-bolt"/></svg> DTL 存金還能撐多久</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
