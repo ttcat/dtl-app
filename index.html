@@ -1263,7 +1263,7 @@ function vMaster(){
      const scnH=(SCNS.find(s=>s.id===ACTIVE)||{}).headline;
      const hd=scnH||DB.settings.headline;
      const c1=hd&&+hd.fy2026_loss_best
-       ?`<div class="card"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> ${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">${money(hd.swap_finalized||'')}</div></div>`
+       ?`<div class="card"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> ${hd.label||'2026 全年存金虧損（基準）'}</div><div class="v num">${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}</div><div class="s">定案區間 ${wan(+hd.fy2026_loss_best)}–${wan(+hd.fy2026_loss_worst||+hd.fy2026_loss_best)}（規劃用上限）${hd.swap_finalized?'｜'+money(hd.swap_finalized):''}</div></div>`
        :hd&&+hd.aug_jan_internal
        ?`<div class="card crit"><div class="l">${hd.label||'存金投入'}</div><div class="v num">${wan(+hd.aug_jan_internal)}</div><div class="s">${money(hd.breakdown||'')}</div></div>`
        :`<div class="card"><div class="l">2026 全年存金虧損（基準）</div><div class="v num">${lossRange()}</div><div class="s">H1+7月已發生 ${wan((+DB.settings.h1_actual_total||0)+(+DB.settings.july_internal_provisional||0))}</div></div>`;
