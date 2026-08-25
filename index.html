@@ -1294,7 +1294,7 @@ function vMaster(){
         const intAmt=ar.filter(a=>a.project_id==='internal').reduce((x,a)=>x+(+a.amount_twd||0),0);
         const loeSum=ar.reduce((x,a)=>x+(+a.loe_pct||0),0);
         const tip='已發生（實際分帳）&#10;'+ar.map(a=>(SHORT[a.project_id]||(prmap[a.project_id]||{}).name||a.project_id)+' '+Math.round(+a.loe_pct||0)+'%｜'+k(a.amount_twd)).join('&#10;');
-        const txt=fund?(intAmt>500?k(intAmt):'0'):(ar.length?String(Math.round(loeSum)):'—');
+        const txt=fund?(intAmt>500?k(intAmt):'0'):(ar.length?Math.round(loeSum)+'%':'—');
         const cls=fund?(intAmt<=500?'fG':intAmt>=cost-500?'fR':'fY'):'';
         h+=`<td><span class="cell num uAct ${cls}" title="${tip}" onclick="event.stopPropagation();toast('這是已經發生的紀錄，不能修改')">${txt}</span></td>`;
         if(fund)intMonth[m]+=intAmt;
@@ -1329,7 +1329,7 @@ function vMaster(){
       const basisPend=over&&isBasisPending(ACTIVE,p.id,m);
       const cls=over?(basisPend?'uBasis':'uOver'):used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
       const nt=noteOf('person',p.id,m);
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?(basisPend?'⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植&#10;':'⚠ 超過他的工時上限 '+cap+'%&#10;'):''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?(basisPend?'⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植&#10;':'⚠ 超過他的工時上限 '+cap+'%&#10;'):''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}%${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -1454,7 +1454,7 @@ function vPerson(pid){
       if(isActualM(m)){ // B23：已發生月份顯示實際金額，唯讀
         const ac=DB.allocations.find(x=>x.layer==='actual'&&x.person_id===pid&&x.month===m&&x.project_id===pr);
         if(!ac){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
-        h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${Math.round(+ac.loe_pct||0)}%｜${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${Math.round(+ac.loe_pct||0)}</span></td>`;
+        h+=`<td><span class="cell num uAct" title="已發生（實際分帳）&#10;${Math.round(+ac.loe_pct||0)}%｜${k(ac.amount_twd)}${ac.ned_line?'&#10;'+esc(ac.ned_line):''}" onclick="toast('這是已經發生的紀錄，不能修改')">${Math.round(+ac.loe_pct||0)}%</span></td>`;
         return}
       const rows=W.filter(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
       const basePd=pendingAt(pid,m,pr);
@@ -1462,7 +1462,7 @@ function vPerson(pid){
       if(basePd&&!pds.some(x=>x.id===basePd.id))pds.push(basePd);
       if(!rows.length&&!pds.length){
         if(pr==='internal'&&costOf(pid,m)>0)
-          h+=`<td><span class="cell num uEdit ${m>FARM?'uFar':''}" onclick="openEdit('${pid}','${m}','internal')" title="目前為 0%；點擊調整這個月由 DTL 自有存款支付的工作比例">0</span></td>`;
+          h+=`<td><span class="cell num uEdit ${m>FARM?'uFar':''}" onclick="openEdit('${pid}','${m}','internal')" title="目前為 0%；點擊調整這個月由 DTL 自有存款支付的工作比例">0%</span></td>`;
         else h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';
         return}
       const sumLoe=rows.reduce((t,r)=>t+(+r.loe_pct||0),0);
@@ -1471,7 +1471,7 @@ function vPerson(pid){
       const shown=pds.length?Math.round(proposedLoe):(rows.length?Math.round(sumLoe):'·');
       h+=`<td><span class="cell num uEdit ${rows.some(r=>r.provisional)?'uP':''} ${pds.length?'pend':''} ${m>FARM?'uFar':''}"
         onclick="openEdit('${pid}','${m}','${pr}')"
-        title="本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}${rows.length>1?'（'+rows.length+' 條預算線加總）':''}&#10;${rows.map(r=>`${esc(lineLabel(r.ned_line))} ${Math.round(+r.loe_pct||0)}%｜${k(+r.amount_twd)}`).join('&#10;')||''}${sealTip(pr,m)}${pds.map(pd=>'&#10;修改建議中：'+(pd.payload&&pd.payload.loe_pct!=null?pd.payload.loe_pct:'')+'%（'+(pd.author||'')+'）').join('')}">${shown}${pds.length?'⏳':''}${sealMark(pr,m)}</span></td>`;
+        title="本格計入：${SHORT[pr]||(prmap[pr]||{}).name||pr}${rows.length>1?'（'+rows.length+' 條預算線加總）':''}&#10;${rows.map(r=>`${esc(lineLabel(r.ned_line))} ${Math.round(+r.loe_pct||0)}%｜${k(+r.amount_twd)}`).join('&#10;')||''}${sealTip(pr,m)}${pds.map(pd=>'&#10;修改建議中：'+(pd.payload&&pd.payload.loe_pct!=null?pd.payload.loe_pct:'')+'%（'+(pd.author||'')+'）').join('')}">${shown==='·'?'·':shown+'%'}${pds.length?'⏳':''}${sealMark(pr,m)}</span></td>`;
     });
     h+='</tr>';
   });
@@ -1480,20 +1480,20 @@ function vPerson(pid){
     if(isActualM(m)){const ar=actRows(pid,m);const c=actCost(pid,m);
       if(!ar.length&&!c){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
       const al=Math.round(ar.reduce((t,a)=>t+(+a.loe_pct||0),0));
-      h+=`<td><span class="cell num uAct" title="已發生：該月工作比例合計 ${al}%｜實付 ${k(c||ar.reduce((t,a)=>t+(+a.amount_twd||0),0))}">${al||'—'}</span></td>`;return}
+      h+=`<td><span class="cell num uAct" title="已發生：該月工作比例合計 ${al}%｜實付 ${k(c||ar.reduce((t,a)=>t+(+a.amount_twd||0),0))}">${al?al+'%':'—'}</span></td>`;return}
     const{used,cap,active}=loeOf(pid,m);
     if(!active){h+='<td><span class="cell" style="color:var(--ink3)">—</span></td>';return}
     const u=Math.round(used);
     const cls=used>cap+0.5?'uOver':Math.abs(used-cap)<=0.5?'fG':'';
-    const extra=used<cap-0.5?`<span style="color:var(--ink3);font-size:10px">/餘${Math.round(cap-used)}</span>`:'';
-    h+=`<td><span class="cell num ${cls}" title="該月全部案子加總 ${u}%｜上限 ${cap}%">${u}${extra}</span></td>`;
+    const extra=used<cap-0.5?`<span style="color:var(--ink3);font-size:10px">/餘${Math.round(cap-used)}%</span>`:'';
+    h+=`<td><span class="cell num ${cls}" title="該月全部案子加總 ${u}%｜上限 ${cap}%">${u}%${extra}</span></td>`;
   });
   h+='</tr>';
   h+=`<tr><td><b>工時上限</b>${isAdmin()?'<span class="tag">點格可改</span>':''}</td>`;
   M.forEach(m=>{
     if(!isActualM(m)&&!plannedMonths.has(m)){h+='<td><span class="cell" style="color:var(--ink3)" title="這個月在目前版本沒有用人安排">—</span></td>';return}
     const c=capOf(pid,m);
-    h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="依「${(SCNS.find(s=>s.id===ACTIVE)||{}).name||'目前版本'}」用人表">${c}</span></td>`;
+    h+=`<td><span class="cell num ${isAdmin()?'capEdit':''}" ${isAdmin()?`onclick="frmCap('${pid}','${m}')"`:''} title="依「${(SCNS.find(s=>s.id===ACTIVE)||{}).name||'目前版本'}」用人表">${c}%</span></td>`;
   });
   h+='</tr>';
   h+=`<tr><td><b>還有多少工時</b></td>`;
@@ -1501,7 +1501,7 @@ function vPerson(pid){
     const{used,cap,active}=loeOf(pid,m);
     if(!active){const zn=zeroNote(pid,m);h+=`<td><span class="cell" style="color:var(--ink3)" ${zn?`title="${zn}"`:''}>—</span></td>`;return}
     const free=Math.max(0,Math.round(cap-used));
-    h+=`<td><span class="cell num ${free>0?'u0':''}">${free}</span></td>`;
+    h+=`<td><span class="cell num ${free>0?'u0':''}">${free}%</span></td>`;
   });
   h+='</tr>';
   if(isAdmin()){
@@ -1707,7 +1707,7 @@ function vLine(keyEnc){
       const a=allocs.find(x=>x.person_id===pid&&x.month===m);
       if(!a||!(+a.amount_twd>0)){h+='<td><span class="cell" style="color:var(--ink3)">·</span></td>';return}
       const l=a.loe_pct!=null?Math.round(+a.loe_pct):'●';
-      h+=`<td><span class="cell num u100 ${a.provisional?'uP':''} ${m>FARM?'uFar':''}" title="${k(+a.amount_twd)}">${l}</span></td>`;
+      h+=`<td><span class="cell num u100 ${a.provisional?'uP':''} ${m>FARM?'uFar':''}" title="${k(+a.amount_twd)}">${l==='●'?'●':l+'%'}</span></td>`;
     });
     h+='</tr>';
     // 跨案重疊：這個人同一個月在其他案子／其他職位還佔了多少（人 ↔ 職位分離的另一面）
@@ -1721,7 +1721,7 @@ function vLine(keyEnc){
     });
     if(olap.some(Boolean)){
       h+=`<tr><td style="color:var(--ink3);font-size:11px;padding-left:18px">↳ 同月的其他工作</td>`;
-      olap.forEach(o=>{h+=o?`<td><span class="cell num" style="color:var(--ink3);font-size:11px" title="${o.tip}">${o.tot}</span></td>`:'<td><span class="cell" style="color:var(--ink3)">·</span></td>'});
+      olap.forEach(o=>{h+=o?`<td><span class="cell num" style="color:var(--ink3);font-size:11px" title="${o.tip}">${o.tot}%</span></td>`:'<td><span class="cell" style="color:var(--ink3)">·</span></td>'});
       h+='</tr>';
     }
   });
@@ -2023,7 +2023,7 @@ function vCompare(cmpId){
           h+=`<td><span class="cell num" style="color:var(--ink3)">${lo?'＝':'—'}</span></td>`;return}
         const workChanged=lo!==ld;
         const tone=workChanged?(ld>lo?'--fN':'--warn'):(projectChanged||lineChanged?'--fH':'--fO');
-        const txt=workChanged?`${lo}→${ld}`:projectChanged?'案子':lineChanged?'預算線':'金額';
+        const txt=workChanged?`${lo}%→${ld}%`:projectChanged?'案子':lineChanged?'預算線':'金額';
         const tip=`工作比例 ${lo}% → ${ld}%&#10;金額 ${k(o.amt)} → ${k(d2.amt)}&#10;原本：${Object.entries(o.lines).map(([n,v])=>n+' '+Math.round(v)+'%').join('＋')||'（無）'}&#10;新版：${Object.entries(d2.lines).map(([n,v])=>n+' '+Math.round(v)+'%').join('＋')||'（無）'}`;
         h+=`<td><span class="cell diffCell ${workChanged?'num':''}" style="background:color-mix(in oklab,var(${tone}) 30%,transparent);font-weight:700" title="${tip}">${txt}</span></td>`;
       });
