@@ -1163,7 +1163,7 @@ window.openRunway=()=>{
       <div class="tblwrap"><table><thead><tr><th>基準日</th><th>存金</th><th>備註</th><th>登記者</th></tr></thead><tbody>${hist}</tbody></table></div>`
     :(()=>{const c=cumOf(ACTIVE);
       return `<p class="note" style="margin:0 0 6px">版本：${esc((SCNS.find(s=>s.id===ACTIVE)||{}).name||ACTIVE)}｜<b>我們自己出的錢（累計）</b>＝${ACT_TO>=ACT_FROM?`已發生（${(+ACT_FROM.slice(0,4))}/${+ACT_FROM.slice(4)}–${(+ACT_TO.slice(0,4))}/${+ACT_TO.slice(4)} 實際分帳）${k(c.h1)}`:`上半年 ${k(c.h1)}`} ＋ 8月起的計劃逐月累加｜至 2027/1 <b>≈${wan(c.to2701)}</b>｜至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}</p>
-      <p class="note" style="margin:0 0 6px;color:var(--warn)">⚠ 1–6 月用的是<b>財務原始分帳</b>——110 萬的分帳調整還沒送出、尚未套用；等財報定稿送出後，這段數字會下降約 110 萬。</p>
+      <p class="note" style="margin:0 0 6px;color:var(--good)">✓ 1–6 月已改用<b>財務定稿</b>（0825 Final：NED／OSF 財報＋存金明細，交換 110 萬已入帳，CEO 8/25 簽核）；財報寄出後由財務按「登記已送財報」封印。</p>
       ${cumSVG(c,760,280,true)}
       <p class="note">灰色虛線左邊是<b>已經發生</b>的實際數字，右邊是計劃。線往上＝我們自己掏的錢越積越多。最陡的那一段就是單月花最多的月份（12 月是年終獎金分攤）。<b>7 月的帳還沒結，不在這條線裡。</b>還沒確定要聘的人不算進去。哪天你在這裡登記了目前的存金餘額，這張圖會自動變成「還能撐幾個月」的版本。</p>`})();
   dlg.showModal()};
@@ -1271,7 +1271,7 @@ function vMaster(){
      const rwCard=rw
        ?`<div class="card click ${rw.dead?'crit':''}" onclick="openRunway()" title="點開 DTL 存金變化圖"><div class="l"><svg class="icon"><use href="#i-bolt"/></svg> DTL 存金還能撐多久</div><div class="v num" style="font-size:17px">${rwLabel(rw)}</div><div class="s">基準 ${rw.mk.as_of}＝${k(+rw.mk.amount_twd)}｜最低點 ${k(rw.low.bal)}</div>${rwSVG(rw,210,34,false)}</div>`
        :(()=>{const c=cumOf(ACTIVE);
-         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 我們自己出的錢（累計）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月暫估約92萬另計（8/15分帳後補實際）</b>；1–6月為原始分帳（110萬調整未套用）${coverNote()}</div>${cumSVG(c,210,34,false)}</div>`})();
+         return `<div class="card click" onclick="openRunway()" title="點開累計曲線"><div class="l"><svg class="icon"><use href="#i-trend"/></svg> 我們自己出的錢（累計）</div><div class="v num" style="font-size:16px">至 2027/1 ≈${wan(c.to2701)}</div><div class="s">至 2026 年末 ≈${wan(c.to2026)}｜至 ${ML[c.endM]||c.endM} ≈${wan(c.toEnd)}｜<b>7月暫估約92萬另計（8/15分帳後補實際）</b>；1–6月＝財務定稿（交換 110 萬已入帳）${coverNote()}</div>${cumSVG(c,210,34,false)}</div>`})();
      return c1+rwCard+`<div class="card prov"><div class="l">還沒確定的金額</div><div class="v num">${wan(provAmt)}</div><div class="s">「若成案」算法，另計不混算${provWt&&!MASK?'｜打折後的估計 '+wan(provWt):''}</div></div>
    <div class="card ${openGates?'crit':''}"><div class="l"><svg class="icon"><use href="#i-cal"/></svg> 待辦死線</div><div class="v num">${openGates}</div><div class="s">G1 分帳死線 8/15</div></div>`})():''}
    ${commonCards}
