@@ -1315,7 +1315,7 @@ function vMaster(){
           +(provPerson?'&#10;（還沒確定要聘的人，列於下方另計列）':'');
         let cls,txt;
         if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
-        else if(f.internal<=500){cls='fG';txt=Math.round(lo.used)}
+        else if(f.internal<=500){cls='fG';txt='0'} // B34：資金視圖單位統一＝存金額（0＝全由補助支付；工作比例看負載視圖或滑過提示）
         else if(f.internal>=f.sal-500||f.grant<=500){cls='fR';txt=k(f.internal)}
         else{cls='fY';txt=k(f.internal)}
         h+=`<td><span class="cell num ${cls} ${over?(basisPend?'fBasis':'fWarn'):''} ${(prov||provPerson)?'uP':''} ${m>FARM?'uFar':''}" title="${tip}">${txt}</span></td>`;
@@ -1637,7 +1637,7 @@ function vLines(){
   let h=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <button class="hbtn" style="${LF==='all'?'font-weight:700;border-color:var(--ink)':''}" onclick="setLF('all')">全部</button>
     <button class="hbtn" style="${LF==='vacant'?'font-weight:700;border-color:var(--warn)':''}" onclick="setLF('vacant')">有預算、沒有人</button>
-    <button class="hbtn" style="${LF==='over'?'font-weight:700;border-color:var(--crit)':''}" onclick="setLF('over')">安排超過預算</button>
+    <button class="hbtn" style="${LF==='over'?'font-weight:700;border-color:var(--warn)':''}" onclick="setLF('over')">需要調整預算</button>
     <span class="note" style="margin:0">點列進職務頁看誰做到什麼時候、誰接手。</span></div>
   <div class="tblwrap"><table><thead><tr><th>案子</th><th>預算線</th><th>類別</th><th>剩餘預算(原幣)</th><th>7月起已安排／剩餘預算</th><th>目前由誰負責</th><th>狀態</th></tr></thead><tbody>`;
   let n=0;
@@ -1650,8 +1650,13 @@ function vLines(){
       ||W.some(a=>a.project_id===b.project_id&&a.ned_line); // B13: 案內有具名歸線＝可判在座
     const projHasAlloc=W.some(a=>a.project_id===b.project_id);
     const vacant=rem>0&&isPers&&!b.ring_fence&&((mapped&&seats.length===0)||!projHasAlloc); // D10＋B12: 全案零配置＝各人事線皆空缺（新案）
-    const st=isPers?(over?['超出預算','rejected']:vacant?['有預算、沒有人','pending']:['已安排','approved'])
-      :(over?['超出預算','rejected']:null); // B24-3：業務費預算線不套用人的狀態
+    // B34：與案頁措辭統一為「需要調整預算」（琥珀）；AIT 案線內超編＝類別內流用（合規），tooltip 說明
+    const donorAIT=(prmap[b.project_id]||{}).donor==='AIT';
+    const overTip=donorAIT?'AIT 只管「類別之間」挪移超過 10% 才要核准——線內超編屬類別內流用，合規；列出供內部管理'
+      :'目前安排超過這條線的剩餘額——需要 rebudget（修約）或減少安排';
+    const overSt=['需要調整預算','pending'];
+    const st=isPers?(over?overSt:vacant?['有預算、沒有人','pending']:['已安排','approved'])
+      :(over?overSt:null); // B24-3：業務費預算線不套用人的狀態
     if(LF==='vacant'&&!vacant)return;if(LF==='over'&&!over)return;
     n++;
     const key=encodeURIComponent(b.project_id+'||'+b.name);
@@ -1662,7 +1667,7 @@ function vLines(){
       <td class="num">${origMoney(+b.remaining_orig,b.currency)}</td>
       <td>${burnMeter(burn)}</td>
       <td>${isPers?(mapped?(seats.map(pid=>pmap[pid]?(pmap[pid].alias||pmap[pid].name):pid).join('、')||'<span style="color:var(--warn)">尚未安排人</span>'):'<span style="color:var(--ink3)" title="本案尚未逐線對應人力，請看案子頁">尚無資料</span>'):'<span style="color:var(--ink3)">不適用</span>'}</td>
-      <td>${st?`<span class="pill ${st[1]}">${st[0]}</span>`:'<span style="color:var(--ink3)">—</span>'}</td></tr>`;
+      <td>${st?`<span class="pill ${st[1]}"${over?` title="${overTip}"`:''}>${st[0]}</span>`:'<span style="color:var(--ink3)">—</span>'}</td></tr>`;
   });
   if(!n)h+='<tr><td colspan=7>此篩選下沒有預算線</td></tr>';
   if(LF==='all'){ // B13: 各案尚未指定預算線的配置提示（判不出歸屬的金額，不硬猜）
@@ -1673,7 +1678,7 @@ function vLines(){
       h+=`<tr style="opacity:.7"><td><b style="color:var(${PC[pr]||'--ink'})">${SHORT[pr]||pr}</b></td>
         <td colspan="5"><span style="color:var(--ink3)">尚未指定預算線 ${k(v)||'（金額隱藏）'}——目前沒有足夠資料，先不代填</span></td><td>—</td></tr>`});
   }
-  h+=`</tbody></table></div><p class="note">「有預算、沒有人」可用來找尚未運用的人事預算；「超出預算」表示目前安排超過剩餘額，必須先取得調整預算的同意。標「不可挪用」的預算不會列入前者。<b>不同案子的同名職位仍各自計算</b>。</p>`;
+  h+=`</tbody></table></div><p class="note">「有預算、沒有人」可用來找尚未運用的人事預算；「需要調整預算」表示目前安排超過這條線的剩餘額——NED 案要走修約；AIT 案若只是線內流用（類別間未逾 10%）屬合規，滑過標籤看說明。標「不可挪用」的預算不會列入前者。<b>不同案子的同名職位仍各自計算</b>。</p>`;
   return h;
 }
 // ---- B5: 單一職務頁（接力/同時多人在同一個職位時間軸） ----
