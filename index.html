@@ -184,7 +184,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" onclick="showCheat()" title="三分鐘看懂這個系統">說明</button>
     <select class="hbtn" id="scnSel" title="版本：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
-    <button class="hbtn" id="scnNew" title="開新版本（複製正式版成你的沙盒）" style="display:none" onclick="frmScn()">＋開新版本</button>
+    <button class="hbtn" id="scnNew" title="開新版本（預設複製你正在看的版本成你的沙盒，也可選別的版本）" style="display:none" onclick="frmScn()">＋開新版本</button>
     <details class="headMenu"><summary class="hbtn">顯示與帳號</summary><div class="headPanel">
       <label>主題<select class="hbtn" id="theme" title="主題" onchange="setTheme(this.value)"><option value="base-auto">Base·自動</option><option value="base-light">Base·亮</option><option value="base-dark">Base·暗</option><option value="classic">經典深色</option></select></label>
       <label>顯示幣別<select class="hbtn" id="curSel" title="顯示幣別（≈為換算值，帳務仍以原幣記）" style="display:none" onchange="setCur(this.value)"><option value="TWD">NT$</option><option value="USD">US$</option><option value="EUR">€ EUR</option></select></label>
@@ -449,19 +449,30 @@ async function recalcBenefits(scnId){
 window.recalcNow=async()=>{const n=await recalcBenefits(ACTIVE);await reload('福利已重算（'+n+' 列更新）')};
 // ---- B14: 每月存檔——official 三表寫入的共用攔截門 ----
 const isSnap=s=>String(s.id||'').startsWith('snap_')||String(s.id||'').startsWith('msnap_');
-async function copyOfficialTo(id){
-  const alloc=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===OFFICIAL)
+// B38：三表複製改為可指定來源版本（預設＝正式版；開新版本時＝你正在看的版本），並一併複製福利基底
+async function copyScnTo(id,src=OFFICIAL){
+  const alloc=DB.allocations.filter(a=>a.layer==='working'&&a.scenario_id===src)
     .map(a=>({person_id:a.person_id,month:a.month,project_id:a.project_id,loe_pct:a.loe_pct,
       amount_twd:a.amount_twd,ned_line:a.ned_line,layer:'working',scenario_id:id,provisional:a.provisional}));
   for(let i=0;i<alloc.length;i+=200)await dbIns('allocations',alloc.slice(i,i+200));
-  const st=(DB.staffing||[]).filter(r=>r.scenario_id===OFFICIAL)
+  const st=(DB.staffing||[]).filter(r=>r.scenario_id===src)
     .map(r=>({scenario_id:id,person_id:r.person_id,month:r.month,cost:r.cost,capacity:r.capacity}));
   for(let i=0;i<st.length;i+=200)await dbIns('staffing',st.slice(i,i+200));
-  const ex=EXP.filter(e=>e.scenario_id===OFFICIAL)
+  const ex=EXP.filter(e=>e.scenario_id===src)
     .map(e=>({scenario_id:id,month:e.month,category:e.category,item:e.item,payer:e.payer,
       amount_twd:e.amount_twd,note:e.note,project_id:e.project_id,line_id:e.line_id}));
   for(let i=0;i<ex.length;i+=200)await dbIns('expense_plan',ex.slice(i,i+200));
+  // 福利基底（模型恆等分解）隨版本複製，讓新版本的福利列與來源版本完全一致，而不是退回費率估算
+  try{
+    const bb=DB.settings.benefit_base;
+    if(bb&&bb.base&&bb.base[src]){
+      const next=JSON.parse(JSON.stringify(bb));next.base[id]=JSON.parse(JSON.stringify(bb.base[src]));
+      await dbIns('settings?on_conflict=key',{key:'benefit_base',value:next},'');
+      DB.settings.benefit_base=next;
+    }
+  }catch(e){console.warn('benefit_base 複製略過',e)}
 }
+const copyOfficialTo=id=>copyScnTo(id,OFFICIAL);
 async function takeSnapshot(id,name,reason,ymMark){
   await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
     status:'archived',owner:null,created_by:ROLE.email,name,note:'存檔｜'+reason,
@@ -485,19 +496,25 @@ window.manualSnapshot=()=>openForm('📸 立即存檔（把現行正式版三表
   await takeSnapshot('msnap_'+Date.now().toString(36),'手動存檔 '+ts,v.why||'手動存檔',null);
   await reload('存檔已留存');
 });
-window.frmScn=()=>openForm('開新版本（複製正式版）',[
-  {id:'name',label:'版本名稱*',placeholder:'例：加碼全過版'},
+window.frmScn=()=>{
+  const srcOpts=SCNS.filter(s=>!isSnap(s)).map(s=>[s.id,(s.name||s.id)+(s.id===OFFICIAL?'（正式版）':s.status==='draft'?'（草稿）':'')]);
+  const cur=(SCNS.find(s=>s.id===ACTIVE)||{});
+  openForm('開新版本（複製一個現有版本）',[
+  {id:'src',label:'從哪個版本複製',type:'select',value:ACTIVE,options:srcOpts},
+  {id:'name',label:'版本名稱*',placeholder:'例：Eric 10/31 離職版'},
   {id:'why',label:'說明(選填)',placeholder:'這個版本想驗證什麼'},
 ],async v=>{
   if(!v.name)throw new Error('名稱必填');
   if(myDrafts().length>=3)throw new Error('每人最多 3 個草稿——請先封存舊草稿');
+  const src=v.src||ACTIVE;const srcS=SCNS.find(s=>s.id===src)||{};
   const id='d_'+slug(v.name)+'_'+Math.floor(Math.random()*9000+1000);
-  await dbIns('scenario_versions',{id,parent:OFFICIAL,date:new Date().toISOString().slice(0,10),
-    status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,note:'使用者開的版本'});
-  await copyOfficialTo(id); // 三表統一複製（B14 共用，含 project_id/line_id）
+  await dbIns('scenario_versions',{id,parent:src,date:new Date().toISOString().slice(0,10),
+    status:'draft',owner:ROLE.email,created_by:ROLE.email,name:v.name,rationale:v.why||null,
+    note:'使用者開的版本（複製自「'+(srcS.name||src)+'」）',headline:srcS.headline||null});
+  await copyScnTo(id,src); // 三表＋福利基底一起複製（B38：來源＝你選的版本，預設＝正在看的版本）
   localStorage.setItem('cr_scn',id);
-  await reload('已開新版本「'+v.name+'」——配置與用人表都已複製，修改只影響此草稿');
-});
+  await reload('已開新版本「'+v.name+'」——從「'+(srcS.name||src)+'」複製配置、用人表、支出計劃與福利基底，修改只影響此草稿');
+})};
 function scnSealedTouch(){ // 採用 diff 觸及的鎖定 (案,月)
   const out=new Set();
   const kf=a=>a.person_id+'|'+a.month+'|'+a.project_id+'|'+(a.ned_line||'');
