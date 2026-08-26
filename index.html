@@ -180,7 +180,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
   <div><div class="eyebrow">DTL · Control Room · Live</div><h1 id="title">總表</h1></div>
   <span id="status" class="note" style="margin:0"></span>
   <nav id="nav">
-    <a href="#master">總表</a><a href="#person">個人頁</a><a href="#projects">案子</a><a href="#lines">職位</a><a href="#scenarios">版本</a><a href="#amend">待辦與死線</a>
+    <a href="#master">總表</a><a href="#finance">財務視圖</a><a href="#person">個人頁</a><a href="#projects">案子</a><a href="#lines">職位</a><a href="#scenarios">版本</a><a href="#amend">待辦與死線</a>
     <button class="hbtn" id="refresh" title="重新載入資料">↻</button>
     <button class="hbtn" onclick="showCheat()" title="三分鐘看懂這個系統">說明</button>
     <select class="hbtn" id="scnSel" title="版本：正式版或你的草稿" style="display:none;max-width:170px" onchange="setScn(this.value)"></select>
@@ -1227,6 +1227,7 @@ const BOARD_MAP=[['benefits','福利費用（勞健退＋年終攤提）'],['租
   ['專案費用','專案(活動)費用'],['Proje','專案(活動)費用']];
 const boardCat=c=>{for(const[t,g]of BOARD_MAP)if((c||'').includes(t))return g;return '其他費用'};
 const PAGE_INTRO={master:'這裡看全部同事每個月做哪些案子、各佔多少工作比例。切到「資金視圖」可以看每個月我們自己要掏多少錢。灰底的月份是<b>已經發生</b>的實際分帳（不能修改），往左捲可以看更早。',
+ finance:'這裡照財務的 Annual Budget（Budget Details）排：一筆費用一列、右邊逐月、底下列出每個資金來源出多少、最後一列 DTL 自付。可切年度、可匯出貼回 Annual Budget。',
  person:'這裡看一個人的完整安排：每個月做哪些案子、工時上限、薪水、當月工作重點。',
  projects:'這裡看所有案子的總覽：期間、還剩多少錢、用掉多少、幾個人在做。',
  project:'這裡看一個案子：預算線、誰在做、每個月要花的業務費，以及這個月要完成什麼。',
@@ -1263,6 +1264,101 @@ function rationaleView(scn,ai,compact=false){
 }
 function coverNote(){const f=m=>(+m.slice(0,4))+'/'+(+m.slice(4));
   return ACT_TO>=ACT_FROM?`｜已發生資料：${f(ACT_FROM)}–${f(ACT_TO)}；2025 年度資料未匯入`:'｜尚無已發生資料'}
+// ---- B40: 財務視圖（照財務的 Budget Details：費用列 × 月份 × 資金來源子列 ＋ DTL 自付；曆年切面；匯出）----
+let FIN_YEAR=localStorage.getItem('cr_fin_year')||'2026';
+window.setFinYear=y=>{FIN_YEAR=y;localStorage.setItem('cr_fin_year',y);route()};
+function finBuild(){
+  const months=M.filter(m=>m.slice(0,4)===FIN_YEAR);
+  const rows=[];
+  const srcName=pr=>pr==='internal'?'DTL 自付':(SHORT[pr]||(prmap[pr]||{}).name||pr);
+  DB.people.forEach(p=>{ // 人事費：每人一個黃底列＋各資金來源子列＋DTL 自付列
+    if(p.provisional&&p.id!=='newfo')return;
+    const head={kind:'head',cat:'人事費',label:(p.alias||p.name),sub:p.name,cells:{}};
+    const byPr={};let any=false;
+    months.forEach(m=>{
+      const cost=isActualM(m)?actCost(p.id,m):costOf(p.id,m);
+      const rs=isActualM(m)?actRows(p.id,m):W.filter(a=>a.person_id===p.id&&a.month===m);
+      if(!cost&&!rs.length)return;any=true;
+      head.cells[m]={v:cost};
+      let grant=0;
+      rs.forEach(a=>{if(a.project_id==='internal')return;
+        const prov=!!(prmap[a.project_id]||{}).provisional;
+        const o=byPr[a.project_id]=byPr[a.project_id]||{kind:'src',cat:'人事費',pr:a.project_id,label:srcName(a.project_id),prov,cells:{}};
+        const c=o.cells[m]=o.cells[m]||{v:0,loe:0,lines:[]};
+        c.v+=+a.amount_twd||0;c.loe+=+a.loe_pct||0;
+        if(a.ned_line)c.lines.push(lineLabel(String(a.ned_line).replace('*REBUDGET',''))+' '+Math.round(+a.loe_pct||0)+'%');
+        if(!prov)grant+=+a.amount_twd||0;
+      });
+      const o=byPr.internal=byPr.internal||{kind:'int',cat:'人事費',pr:'internal',label:'DTL 自付',cells:{}};
+      o.cells[m]={v:Math.max(0,cost-grant),gap:cost>0&&grant===0};
+    });
+    if(!any)return;
+    rows.push(head);Object.values(byPr).filter(o=>o.kind==='src').forEach(o=>rows.push(o));rows.push(byPr.internal);
+  });
+  const cats={}; // 員工福利與業務費：支出計劃（計劃月＝目前版本；已發生月＝ACTUAL）
+  EXP.forEach(e=>{
+    const m=e.month;if(!months.includes(m))return;
+    if(isActualM(m)?e.scenario_id!=='ACTUAL':e.scenario_id!==ACTIVE)return;
+    const isBen=String(e.category||'')==='benefits'||String(e.item||'').startsWith('福利');
+    const cat=isBen?'員工福利':categoryLabel(e.category||'其他');
+    const src=e.payer==='internal'?'internal':(e.project_id||'grant');
+    const C=cats[cat]=cats[cat]||{head:{kind:'head',cat,label:cat,cells:{}},by:{}};
+    const hc=C.head.cells[m]=C.head.cells[m]||{v:0};hc.v+=+e.amount_twd||0;
+    const o=C.by[src]=C.by[src]||{kind:src==='internal'?'int':'src',cat,pr:src,label:srcName(src),prov:!!(prmap[src]||{}).provisional,cells:{}};
+    const c=o.cells[m]=o.cells[m]||{v:0,lines:[]};c.v+=+e.amount_twd||0;if(e.item)c.lines.push(e.item+' '+k(+e.amount_twd||0));
+  });
+  Object.values(cats).forEach(C=>{rows.push(C.head);Object.values(C.by).filter(o=>o.kind==='src').forEach(o=>rows.push(o));if(C.by.internal)rows.push(C.by.internal)});
+  return{rows,months};
+}
+function vFinance(){
+  const{rows,months}=finBuild();
+  const years=[...new Set(M.map(m=>m.slice(0,4)))];
+  const ml=m=>`${+m.slice(4)}月`;
+  const conf={},provT={},selfT={};
+  rows.forEach(r=>{months.forEach(m=>{const c=r.cells[m];if(!c)return;
+    if(r.kind==='src')(r.prov?provT:conf)[m]=((r.prov?provT:conf)[m]||0)+c.v;
+    if(r.kind==='int')selfT[m]=(selfT[m]||0)+c.v})});
+  const T=obj=>months.reduce((s,m)=>s+(obj[m]||0),0);
+  let h=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <span class="pteam">年度</span>${years.map(y=>`<button class="hbtn" style="${y===FIN_YEAR?'font-weight:700;border-color:var(--ink)':''}" onclick="setFinYear('${y}')">${y}</button>`).join('')}
+    <button class="hbtn" onclick="exportFinance()">⬇ 匯出（Budget Details 格式）</button>
+    <span class="note" style="margin:0">黃底列＝這筆費用今年會花多少（照目前看的版本）；底下每列＝哪個資金來源出多少（人事格內「比例｜金額」，滑過看該 funding 的預算項目）；紅字列＝DTL 自付。灰底月份＝已發生實際數。虛線＝申請中／還在談，不計入已確保。</span></div>`;
+  h+=`<div class="tblwrap"><table><thead><tr><th>費用項目</th><th>資金來源</th>${months.map(m=>`<th class="num"${isActualM(m)?' style="color:var(--ink3)"':''}>${ml(m)}</th>`).join('')}<th class="num">${FIN_YEAR} 合計</th></tr></thead><tbody>`;
+  let curCat='';
+  rows.forEach(r=>{
+    if(r.cat!==curCat){curCat=r.cat;h+=`<tr><td colspan="${months.length+3}" style="background:var(--rail);font-weight:700">${esc(curCat)}</td></tr>`}
+    const sum=months.reduce((s,m)=>s+((r.cells[m]||{}).v||0),0);
+    if(r.kind==='head'){
+      h+=`<tr style="background:color-mix(in oklab,var(--warn) 12%,transparent)"><td><b>${esc(r.label)}</b>${r.sub&&r.sub!==r.label?`<br><span style="font-size:10.5px;color:var(--ink3)">${esc(r.sub)}</span>`:''}</td><td style="color:var(--ink3)">預估費用</td>${months.map(m=>{const c=r.cells[m];return `<td><span class="cell num ${isActualM(m)?'uAct':''}">${c?k(c.v):'—'}</span></td>`}).join('')}<td class="num"><b>${k(sum)}</b></td></tr>`;
+    }else{
+      const isInt=r.kind==='int';
+      h+=`<tr><td></td><td style="${isInt?'color:var(--crit)':''}">${esc(r.label)}${r.prov?'<span class="prov-badge">申請中／還在談</span>':''}</td>${months.map(m=>{const c=r.cells[m];if(!c||(!c.v&&!c.gap))return '<td><span class="cell" style="color:var(--ink3)">·</span></td>';
+        const tip=(c.lines||[]).join('&#10;');const txt=(c.loe!=null&&!isInt)?`${Math.round(c.loe)}%｜${k(c.v)}`:k(c.v);
+        return `<td><span class="cell num ${isActualM(m)?'uAct':''} ${r.prov?'uP':''} ${isInt&&c.gap?'uOver':''}"${isInt?' style="color:var(--crit)"':''} title="${tip}${c.gap?'&#10;⚠ 這個月沒有任何資金來源，全額自付':''}">${txt}</span></td>`}).join('')}<td class="num"${isInt?' style="color:var(--crit)"':''}>${k(sum)}</td></tr>`;
+    }
+  });
+  h+=`<tr class="grand"><td><b>已確保資金合計</b></td><td></td>${months.map(m=>`<td><span class="cell num">${k(conf[m]||0)}</span></td>`).join('')}<td class="num"><b>${k(T(conf))}</b></td></tr>`;
+  if(Object.keys(provT).length)h+=`<tr><td style="color:var(--ink3)">申請中／還在談（另計，不混入）</td><td></td>${months.map(m=>`<td><span class="cell num uP">${k(provT[m]||0)}</span></td>`).join('')}<td class="num">${k(T(provT))}</td></tr>`;
+  h+=`<tr class="grand"><td><b style="color:var(--crit)">DTL 自付合計</b></td><td></td>${months.map(m=>`<td><span class="cell num" style="color:var(--crit)">${k(selfT[m]||0)}</span></td>`).join('')}<td class="num"><b style="color:var(--crit)">${k(T(selfT))}</b></td></tr>`;
+  h+=`</tbody></table></div><p class="note">這頁照財務的 Annual Budget（Budget Details）排：一筆費用一列、右邊逐月、底下列出每個資金來源出多少、最後一列 DTL 自付。人事費的比例＝當月掛該案的工作比例；福利與業務費來自支出計劃（已發生月份用實際數）。匯出檔的欄位順序照 Budget Details，可直接貼回 Annual Budget。</p>`;
+  return h;
+}
+window.exportFinance=()=>{
+  const{rows,months}=finBuild();
+  const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const out=[['屬性','資金來源','預算項目','LOE','DTL費用類別','費用項目','說明',...months].map(q).join(',')];
+  rows.forEach(r=>{
+    if(r.kind==='head')out.push(['預估費用','','','',r.cat,r.label,r.sub||'',...months.map(m=>Math.round((r.cells[m]||{}).v||0))].map(q).join(','));
+    else if(r.kind==='src'){
+      const lines=[...new Set(months.flatMap(m=>((r.cells[m]||{}).lines||[]).map(x=>x.replace(/ [\d,k]+%?$/,''))))].join('；');
+      if(r.cat==='人事費')out.push(['預計LOE',r.label,lines,'',r.cat,'','',...months.map(m=>{const c=r.cells[m];return c&&c.loe!=null?Math.round(c.loe)+'%':''})].map(q).join(','));
+      out.push(['資金來源',r.label,lines,'',r.cat,'','',...months.map(m=>Math.round((r.cells[m]||{}).v||0))].map(q).join(','));
+    }else out.push(['資金來源','DTL Internal Coverage','','',r.cat,'','',...months.map(m=>Math.round((r.cells[m]||{}).v||0))].map(q).join(','));
+  });
+  const blob=new Blob(['﻿'+out.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`BudgetDetails_${FIN_YEAR}_${ACTIVE}.csv`;a.click();
+  toast('已匯出 '+out.length+' 列（'+FIN_YEAR+'）');
+};
 function pageIntro(page){const t=PAGE_INTRO[page];return t?`<p class="banner" style="border-left:3px solid var(--fN)">${t}</p>`:''}
 function vMaster(){
   let provAmt=0,provWt=0;
@@ -2283,7 +2379,7 @@ function route(){
   const parts=(location.hash||'#master').slice(1).split('/');
   let page=parts[0],arg=parts.slice(1).join('/');
   if(!isAdmin()){
-    if(['lines','line','amend','compare','scenarios'].includes(page)){
+    if(['lines','line','amend','compare','scenarios','finance'].includes(page)){
       document.getElementById('title').textContent='僅限管理者';
       document.getElementById('app').innerHTML='<p class="banner err">這一頁只有你和財務看得到（因為含金額）。回<a href="#person">我的頁面</a>。</p>';
       wireInteractive();
@@ -2294,11 +2390,11 @@ function route(){
   }
   const navPg=page==='project'?'projects':page==='line'?'lines':page;
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.hash.split('/')[0]==='#'+navPg));
-  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'單一案子',projects:'所有案子',lines:'所有職位',line:'單一職位',amend:'待辦與死線',compare:'版本比較',scenarios:'版本總覽'};
+  const T={master:'總表',person:isAdmin()?'個人頁':'我的頁面',project:'單一案子',projects:'所有案子',lines:'所有職位',line:'單一職位',amend:'待辦與死線',compare:'版本比較',scenarios:'版本總覽',finance:'財務視圖'};
   document.getElementById('title').textContent=T[page]||'總表';
   document.getElementById('app').innerHTML=(page==='compare'?'':draftBanner())+pageIntro(page)+
     (page==='person'?vPerson(arg):page==='project'?vProject(arg):page==='projects'?vProjects()
-     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare(arg)
+     :page==='lines'?vLines():page==='line'?vLine(arg):page==='amend'?vAmend():page==='compare'?vCompare(arg):page==='finance'?vFinance()
      :page==='scenarios'?vScenarios():vMaster());
   wireInteractive();
 }
