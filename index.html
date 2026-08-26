@@ -1894,7 +1894,7 @@ window.frmSeat=(pr,name)=>{
       const sal=costOf(v.pid,m);
       if(!sal)throw new Error(ML[m]+'：'+(p.alias||p.name)+' 無在職成本（未到職／已離職／資料未排）');
       const{used,cap}=loeOf(v.pid,m);
-      if(used+l>cap+0.5)throw new Error(ML[m]+' 合計將達 '+Math.round(used+l)+'%，超過工時上限 '+cap+'%');
+      if(used+l>cap+0.5)toast(ML[m]+' 合計將達 '+Math.round(used+l)+'%，超過工時上限 '+cap+'%——已允許，格子會標紅'); // B42：不擋存
       add+=Math.round(sal/capOf(v.pid,m)*l);
     }
     const{rem,used:lu}=lineBurn(b);
@@ -2285,9 +2285,9 @@ window.frmFx=()=>openForm('編輯顯示匯率（TWD 基準）',[
 
 // ---- proposal dialog ----
 let edCtx=null;
-function edError(msg){const e=document.getElementById('edErr');
-  if(msg){e.textContent=msg;e.style.display='block'}else{e.textContent='';e.style.display='none'}
-  document.getElementById('edSave').disabled=!!msg;}
+function edError(msg,warn){const e=document.getElementById('edErr'); // B42：warn=true 只提醒不擋存
+  if(msg){e.textContent=msg;e.style.display='block';e.style.color=warn?'var(--warn)':''}else{e.textContent='';e.style.display='none';e.style.color=''}
+  document.getElementById('edSave').disabled=!!msg&&!warn;}
 window.openEdit=(pid,m,pr,line)=>{
   const p=pmap[pid];
   const cellRows=W.filter(x=>x.person_id===pid&&x.month===m&&x.project_id===pr);
@@ -2327,14 +2327,13 @@ function updAmt(){if(!edCtx)return;const l=+document.getElementById('edLoe').val
   if(l<0)edError('工作比例不可為負數');
   else if(total>edCtx.cap+0.5){const mix=loeMix(edCtx.pid,edCtx.m);
     const target=(SHORT[edCtx.pr]||(prmap[edCtx.pr]||{}).name||edCtx.pr)+(edCtx.line?'（'+lineLabel(edCtx.line)+'）':'');
-    edError(`這個月原本：${mix||'沒有其他安排'} ＝ ${Math.round(edCtx.othersLoe+edCtx.cur)}%。把 ${target} 從 ${edCtx.cur}% 改成 ${l}% 後會變 ${Math.round(total)}%，超過工時上限 ${edCtx.cap}%。`);}
+    edError(`⚠ 這個月原本：${mix||'沒有其他安排'} ＝ ${Math.round(edCtx.othersLoe+edCtx.cur)}%。把 ${target} 從 ${edCtx.cur}% 改成 ${l}% 後會變 ${Math.round(total)}%，超過工時上限 ${edCtx.cap}%——可以先存，格子會標紅，之後再把別的月份或案子調低。`,true);}
   else edError(null);}
 document.getElementById('edLoe').addEventListener('input',updAmt);
 document.getElementById('edCancel').onclick=()=>document.getElementById('editDlg').close();
 document.getElementById('edSave').onclick=async()=>{
   const l=+document.getElementById('edLoe').value;
-  const total=edCtx.othersLoe+l;
-  if(l<0||total>edCtx.cap+0.5){updAmt();return}
+  if(l<0){updAmt();return} // B42（CEO）：超過工時上限不再擋存——先存、標紅、再調別處；否則得先把別的月份歸零才能加
   if(isAdmin()&&ACTIVE!==OFFICIAL){ // 草稿：直接寫入，不走修改建議
     if(!canEditScn()){edError('這是 AI（或他人）的草稿，對你唯讀——請用「與正式版比較」後決定採用或封存。');return}
     const t=edCtx;const amt=Math.round(t.sal/t.cap*l);
