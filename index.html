@@ -340,8 +340,11 @@ function applyScnSel(){
   el.style.display=isAdmin()?'':'none';
   document.getElementById('scnNew').style.display=isAdmin()?'':'none';
   if(!isAdmin())return;
+  // B41（CEO 裁定）：管理者看得到所有版本——自己的草稿可改、別人的草稿唯讀（標示開版人）
+  const others=SCNS.filter(s=>s.status==='draft'&&!isAiOwner(s.owner)&&!(ROLE&&s.owner===ROLE.email));
   el.innerHTML=`<option value="${OFFICIAL}">📌 ${(SCNS.find(s=>s.id===OFFICIAL)||{}).name||'正式版'}</option>`
     +myDrafts().map(s=>`<option value="${s.id}">🧪 ${s.name||s.id}</option>`).join('')
+    +others.map(s=>`<option value="${s.id}">👤 ${s.name||s.id}（${String(s.owner||'').split('@')[0]}，唯讀）</option>`).join('')
     +aiDrafts().filter(s=>!myDrafts().some(x=>x.id===s.id)).map(s=>`<option value="${s.id}">🤖 ${s.name||s.id}</option>`).join('');
   el.value=ACTIVE;
 }
@@ -349,7 +352,8 @@ const draftBanner=()=>{
   if(!isAdmin()||ACTIVE===OFFICIAL)return '';
   const scn=SCNS.find(s=>s.id===ACTIVE)||{};
   const ai=isAiOwner(scn.owner);
-  return `<p class="banner" style="border-color:var(--fP)">${ai?'🤖 AI 修改建議版本':'🧪 草稿版本'}「<b>${scn.name||ACTIVE}</b>」——${ai?'AI 產生的修改建議（人類唯讀）：看比較、決定採用或封存。':'只有你看得到；點格＝直接改草稿（不走修改建議）。'}
+  const mine=ROLE&&scn.owner===ROLE.email;
+  return `<p class="banner" style="border-color:var(--fP)">${ai?'🤖 AI 修改建議版本':'🧪 草稿版本'}「<b>${scn.name||ACTIVE}</b>」——${ai?'AI 產生的修改建議（人類唯讀）：看比較、決定採用或封存。':mine?'你開的版本；點格＝直接改草稿（不走修改建議）。其他管理者看得到但不能改。':`由 ${String(scn.owner||'').split('@')[0]} 開的版本，對你唯讀；想在它上面改，請「＋開新版本」複製它。`}
     <a href="#compare">與正式版比較</a>
     <button class="miniact ok" onclick="finalizeScn()">採用這個版本</button>
     <button class="miniact" onclick="archiveScn()">封存草稿</button>
