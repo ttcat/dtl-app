@@ -1276,8 +1276,9 @@ function finBuild(){
     const head={kind:'head',cat:'人事費',label:(p.alias||p.name),sub:p.name,cells:{}};
     const byPr={};let any=false;
     months.forEach(m=>{
-      const cost=isActualM(m)?actCost(p.id,m):costOf(p.id,m);
       const rs=isActualM(m)?actRows(p.id,m):W.filter(a=>a.person_id===p.id&&a.month===m);
+      // 已發生月份：預估費用＝當月實際分帳總額（各資金來源＋存金），不是用人表的存金欄
+      const cost=isActualM(m)?rs.reduce((s,a)=>s+(+a.amount_twd||0),0):costOf(p.id,m);
       if(!cost&&!rs.length)return;any=true;
       head.cells[m]={v:cost};
       let grant=0;
@@ -1290,7 +1291,8 @@ function finBuild(){
         if(!prov)grant+=+a.amount_twd||0;
       });
       const o=byPr.internal=byPr.internal||{kind:'int',cat:'人事費',pr:'internal',label:'DTL 自付',cells:{}};
-      o.cells[m]={v:Math.max(0,cost-grant),gap:cost>0&&grant===0};
+      const selfAct=rs.filter(a=>a.project_id==='internal').reduce((s,a)=>s+(+a.amount_twd||0),0);
+      o.cells[m]={v:isActualM(m)?selfAct:Math.max(0,cost-grant),gap:!isActualM(m)&&cost>0&&grant===0};
     });
     if(!any)return;
     rows.push(head);Object.values(byPr).filter(o=>o.kind==='src').forEach(o=>rows.push(o));rows.push(byPr.internal);
