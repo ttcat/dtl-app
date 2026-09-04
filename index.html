@@ -2608,10 +2608,13 @@ setTimeout(()=>{if(typeof DB!=='undefined'&&DB)maybeCheat()},1200);
       if(!p)return '找不到這位同事：'+s;
       const rows=W.filter(x=>x.person_id===p.id&&x.month===a.month);
       const lo=loeOf(p.id,a.month);
-      return {person:p.alias||p.name,type:p.type,month:a.month,monthly_cost:costOf(p.id,a.month),cap_pct:capOf(p.id,a.month),
+      const adm=typeof isAdmin==='function'&&isAdmin(); // 第二道鎖：非 admin 的 session 連欄位都不吐（第一道是 RLS——member 本來就載不到金額）
+      const base={person:p.alias||p.name,type:p.type,month:a.month,cap_pct:capOf(p.id,a.month),
         total_loe_pct:Math.round(lo.used),
-        rows:rows.map(x=>({project:(prmap[x.project_id]||{}).name||x.project_id,line:x.ned_line||null,loe_pct:+x.loe_pct,amount_twd:+x.amount_twd})),
+        rows:rows.map(x=>{const r={project:(prmap[x.project_id]||{}).name||x.project_id,line:x.ned_line||null,loe_pct:+x.loe_pct};if(adm)r.amount_twd=+x.amount_twd;return r}),
         note:p.type==='contractor'?'顧問：各 engagement 獨立費率計費，合計逾 100% 非超載':null};
+      if(adm)base.monthly_cost=costOf(p.id,a.month);else base.note=(base.note?base.note+'；':'')+'金額欄位僅管理員可見';
+      return base;
     }},
    {name:'dtl_project_lines',
     description:'查某案逐條預算線：預算(原幣)、專案LOE%、已支用、剩餘（含截至日）、已安排、已安排剩餘(原幣)。project 用案 id（例：ned、di、se、hrf）或名稱關鍵字。',
