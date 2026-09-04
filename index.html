@@ -2572,6 +2572,90 @@ window.setTheme=v=>{window.__themePref=v;localStorage.setItem('cr_theme',v);cons
 document.getElementById('theme').value=window.__themePref||'base-auto';
 addEventListener('hashchange',route);
 setTimeout(()=>{if(typeof DB!=='undefined'&&DB)maybeCheat()},1200);
+
+// ---------- B47: WebMCP 工具層——網頁自己把工具亮給使用者帶來的 AI（ChatGPT 桌面版、Claude 等支援 agent 的環境） ----------
+// 設計原則：工具跑在「登入者的 session」裡，權限仍由資料庫 RLS 管；讀取自由、寫入一律走 edit_proposals 提案（人審核才生效）。
+(function webmcpRegister(){
+  const ready=()=>typeof DB!=='undefined'&&DB&&DB.projects;
+  const NOT_READY='資料尚未載入完成，請幾秒後重試（或請使用者先登入 https://ttcat.github.io/dtl-app/）';
+  const TOOLS=[
+   {name:'dtl_overview',
+    description:'DTL 財務控制室：整合預算總覽。回傳每個案子的預算(原幣)、剩餘(原幣)、已安排合計(TWD)、已安排剩餘(原幣，負數＝照現在排法撐不到最後)、平均收款匯率、LOE 覆蓋（排到哪／計畫終點）。',
+    schema:{type:'object',properties:{},additionalProperties:false},
+    run:async()=>{
+      if(!ready())return NOT_READY;
+      return DB.projects.filter(p=>DB.budget_lines.some(b=>b.project_id===p.id)).map(p=>{
+        const lines=DB.budget_lines.filter(b=>b.project_id===p.id);
+        let used=0,rem=0,bud=0,budAll=true;
+        lines.forEach(b=>{const x=lineBurn(b);used+=x.used;rem+=+b.remaining_orig||0;if(b.budget_orig!=null)bud+=+b.budget_orig;else budAll=false});
+        const fx=+p.fx||31.5;
+        const covMax=W.filter(a=>a.project_id===p.id&&+a.amount_twd>0).map(a=>a.month).sort().pop()||null;
+        return {id:p.id,name:p.name,status:p.status,currency:p.currency||'TWD',
+          budget_orig:budAll&&bud?+bud.toFixed(2):null,remaining_orig:+rem.toFixed(2),
+          scheduled_twd:Math.round(used),scheduled_remaining_orig:+(rem-used/fx).toFixed(2),
+          fx_avg_collection:fx,fx_asof:p.fx_asof||null,
+          loe_planned_end:p.loe_planned_end||null,loe_last_month:covMax,
+          loe_coverage:p.loe_planned_end?(covMax&&covMax>=p.loe_planned_end?'鋪滿':'缺口'):'不列管'};
+      });
+    }},
+   {name:'dtl_person_month',
+    description:'查某位同事某月的 LOE 安排：各案比例、金額(TWD)、預算線。person 可用中文名、別名或 id；month 格式 YYYYMM。',
+    schema:{type:'object',properties:{person:{type:'string'},month:{type:'string'}},required:['person','month'],additionalProperties:false},
+    run:async(a)=>{
+      if(!ready())return NOT_READY;
+      const s=(a.person||'').trim();
+      const p=DB.people.find(x=>x.id===s||x.name===s||(x.alias&&x.alias===s)||(x.name&&s.length>=2&&x.name.includes(s)));
+      if(!p)return '找不到這位同事：'+s;
+      const rows=W.filter(x=>x.person_id===p.id&&x.month===a.month);
+      const lo=loeOf(p.id,a.month);
+      return {person:p.alias||p.name,type:p.type,month:a.month,monthly_cost:costOf(p.id,a.month),cap_pct:capOf(p.id,a.month),
+        total_loe_pct:Math.round(lo.used),
+        rows:rows.map(x=>({project:(prmap[x.project_id]||{}).name||x.project_id,line:x.ned_line||null,loe_pct:+x.loe_pct,amount_twd:+x.amount_twd})),
+        note:p.type==='contractor'?'顧問：各 engagement 獨立費率計費，合計逾 100% 非超載':null};
+    }},
+   {name:'dtl_project_lines',
+    description:'查某案逐條預算線：預算(原幣)、專案LOE%、已支用、剩餘（含截至日）、已安排、已安排剩餘(原幣)。project 用案 id（例：ned、di、se、hrf）或名稱關鍵字。',
+    schema:{type:'object',properties:{project:{type:'string'}},required:['project'],additionalProperties:false},
+    run:async(a)=>{
+      if(!ready())return NOT_READY;
+      const s=(a.project||'').trim();
+      const p=DB.projects.find(x=>x.id===s)||DB.projects.find(x=>x.name&&x.name.includes(s));
+      if(!p)return '找不到這個案子：'+s+'（可用 dtl_overview 先列出所有案）';
+      const fx=+p.fx||31.5;
+      return DB.budget_lines.filter(b=>b.project_id===p.id).map(b=>{
+        const x=lineBurn(b);const rem=+b.remaining_orig||0;
+        return {line:b.name,budget_orig:b.budget_orig!=null?+b.budget_orig:null,project_loe_pct:b.budget_loe!=null?+b.budget_loe:null,
+          spent_orig:b.budget_orig!=null?+(+b.budget_orig-rem).toFixed(2):null,
+          remaining_orig:rem,remaining_asof:b.asof||null,
+          scheduled_twd:Math.round(x.used),scheduled_remaining_orig:+(rem-x.used/fx).toFixed(2),
+          ring_fence:b.ring_fence||null,provisional:!!b.provisional};
+      });
+    }},
+   {name:'dtl_propose_edit',
+    description:'提出資料修改「提案」。不會直接改任何資料——寫入 edit_proposals，由管理員在系統內審核後才套用。target_table 限 allocations/budget_lines/expense_plan/people/projects；action 限 UPDATE/INSERT；payload 為要改的欄位值物件；note 必填（為什麼要改，會給審核者看）。',
+    schema:{type:'object',properties:{target_table:{type:'string'},target_pk:{type:'string'},action:{type:'string'},payload:{type:'object'},note:{type:'string'}},required:['target_table','action','payload','note'],additionalProperties:false},
+    run:async(a)=>{
+      if(!ready())return NOT_READY;
+      const okT=['allocations','budget_lines','expense_plan','people','projects'];
+      if(!okT.includes(a.target_table))return 'target_table 僅限：'+okT.join('/');
+      if(!['UPDATE','INSERT'].includes(a.action))return 'action 僅限 UPDATE 或 INSERT';
+      if(!a.note||!a.note.trim())return 'note 必填——審核者要知道為什麼';
+      await dbIns('edit_proposals',{author:'webmcp:'+((typeof ME!=='undefined'&&ME&&ME.email)||'agent'),
+        target_table:a.target_table,target_pk:a.target_pk||null,action:a.action,payload:a.payload,note:a.note,status:'pending'});
+      return '提案已送出，等待管理員審核（系統「修改建議」清單可見）。';
+    }},
+  ];
+  const wrap=t=>({name:t.name,description:t.description,inputSchema:t.schema,
+    async execute(args){try{const r=await t.run(args||{});return {content:[{type:'text',text:typeof r==='string'?r:JSON.stringify(r)}]}}
+      catch(e){return {content:[{type:'text',text:'錯誤：'+e.message}],isError:true}}}});
+  try{
+    const mc=navigator.modelContext;
+    if(mc&&typeof mc.registerTool==='function'){TOOLS.forEach(t=>mc.registerTool(wrap(t)));console.log('[WebMCP] registerTool ×'+TOOLS.length);return}
+    if(mc&&typeof mc.provideContext==='function'){mc.provideContext({tools:TOOLS.map(wrap)});console.log('[WebMCP] provideContext ×'+TOOLS.length);return}
+    window.__WEBMCP_TOOLS=TOOLS.map(wrap); // 沒有原生支援時留在 window 上，polyfill／擴充套件可自行接
+    console.log('[WebMCP] 瀏覽器未支援 navigator.modelContext——工具掛在 window.__WEBMCP_TOOLS 供 polyfill 使用');
+  }catch(e){console.warn('[WebMCP] 註冊失敗',e)}
+})();
 // ---------- boot ----------
 loadSes();
 const fresh=parseHashTokens();
