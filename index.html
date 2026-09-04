@@ -2645,8 +2645,13 @@ setTimeout(()=>{if(typeof DB!=='undefined'&&DB)maybeCheat()},1200);
       return '提案已送出，等待管理員審核（系統「修改建議」清單可見）。';
     }},
   ];
+  window.__WEBMCP_LOG=[]; // 呼叫紀錄：{time,tool,args} —— console 輸入 __WEBMCP_LOG 可查
   const wrap=t=>({name:t.name,description:t.description,inputSchema:t.schema,
-    async execute(args){try{const r=await t.run(args||{});return {content:[{type:'text',text:typeof r==='string'?r:JSON.stringify(r)}]}}
+    async execute(args){
+      try{window.__WEBMCP_LOG.push({time:new Date().toISOString(),tool:t.name,args:args||{}});
+        if(typeof toast==='function')toast('🤖 AI 呼叫了 '+t.name);
+        console.log('[WebMCP call]',t.name,args||{});}catch(e){}
+      try{const r=await t.run(args||{});return {content:[{type:'text',text:typeof r==='string'?r:JSON.stringify(r)}]}}
       catch(e){return {content:[{type:'text',text:'錯誤：'+e.message}],isError:true}}}});
   try{
     const mc=navigator.modelContext;
