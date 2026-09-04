@@ -611,6 +611,28 @@ window.frmPerson=()=>openForm('新增同事',[
   await reload('已新增 '+v.name+(ACTIVE!==OFFICIAL?'（僅此草稿）':''));
 });
 
+window.frmPeriod=pr=>{const proj=prmap[pr];
+  const mm=String(proj.period||'').match(/\[(\d{4})-(\d{2})[^,]*,(\d{4})-(\d{2})/);
+  const curEnd=mm?`${mm[3]}-${mm[4]}`:'';
+  openForm('改期間／No-Cost Extension（'+(proj.name||pr)+'）',[
+    {id:'end',label:'新迄月*',type:'month',value:curEnd},
+    {id:'loeEnd',label:'LOE 計畫終點',type:'month',value:proj.loe_planned_end?proj.loe_planned_end.slice(0,4)+'-'+proj.loe_planned_end.slice(4):curEnd},
+    {id:'why',label:'原因與依據*（例：NCE 核准信 2026-10-01）',type:'textarea',placeholder:'NCE 至 2027/12，同預算；NED 核准 email 日期…'},
+  ],async v=>{
+    if(!v.end)throw new Error('新迄月必填');
+    if(!v.why)throw new Error('原因必填——NCE／改期一定要留依據，查核會看');
+    if(!mm)throw new Error('目前期間格式無法解析，請找管理員後台處理');
+    const endD=new Date(+v.end.slice(0,4),+v.end.slice(5,7),0).getDate();
+    const period=`[${mm[1]}-${mm[2]}-01,${v.end}-${endD}]`;
+    const upd={period,loe_planned_end:monthInputToKey(v.loeEnd)||null,
+      note:(proj.note?proj.note+'｜':'')+`改期 ${curEnd}→${v.end}（${v.why.slice(0,80)}）`};
+    await dbUpd('projects','id=eq.'+pr,upd);
+    try{await dbIns('audit_log',{actor:ME.email,table_name:'projects',row_pk:pr,action:'UPDATE',
+      before:{period:proj.period,loe_planned_end:proj.loe_planned_end},after:{...upd,reason:v.why}})}catch(e){}
+    try{await dbIns('scenario_notes',{scenario_id:ACTIVE,author:ME.email,author_type:'user',
+      note:`【改期／NCE】${proj.name}：迄月 ${curEnd}→${v.end}；LOE 計畫終點 ${v.loeEnd||'—'}。原因：${v.why}`})}catch(e){}
+    await reload('已更新期間——月份軸會自動延長；記得把 LOE 鋪到新終點（總覽的「LOE 覆蓋」會盯著）');
+  })};
 window.frmProject=()=>openForm('新增案子',[
   {id:'name',label:'名稱*'},{id:'donor',label:'資助單位'},
   {id:'status',label:'狀態',type:'select',value:'pipeline',options:[['active','已確認'],['pipeline','還在談']]},
@@ -1727,7 +1749,7 @@ function vProject(pr){
    <a href="#projects" class="hbtn" style="text-decoration:none">≡ 所有案子</a>${sel}
    ${proj.provisional?`<span class="prov-badge">還在談${proj.confidence?' · 目前估計 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
    ${isAdmin()&&proj.provisional?`<button class="hbtn" style="color:var(--good);border-color:var(--good)" onclick="promoteProject('${pr}')">✓ 轉正式</button>`:''}
-   ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增案子</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增預算線</button>`:''}
+   ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增案子</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增預算線</button><button class="hbtn" onclick="frmPeriod('${pr}')">改期間／NCE</button>`:''}
    ${proj.currency&&proj.currency!=='TWD'?`<span class="pill num" title="日記帳平均收款匯率——第一次收款 31、第二次 33 就填 32；財報匯率每次不同，此值僅供最快最接近的外幣餘額參考">匯率 ${proj.fx||'—'}${proj.fx_asof?`（更新 ${proj.fx_asof}）`:''}</span>${isAdmin()?`<button class="hbtn" onclick="frmFx('${pr}')">改匯率</button>`:''}`:''}
    ${(()=>{if(!proj.loe_planned_end)return '';
      const cm=W.filter(a=>a.project_id===pr&&+a.amount_twd>0).map(a=>a.month).reduce((mx,m)=>m>mx?m:mx,'');
