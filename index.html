@@ -1729,6 +1729,12 @@ function vProject(pr){
    ${isAdmin()&&proj.provisional?`<button class="hbtn" style="color:var(--good);border-color:var(--good)" onclick="promoteProject('${pr}')">✓ 轉正式</button>`:''}
    ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增案子</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增預算線</button>`:''}
    ${proj.currency&&proj.currency!=='TWD'?`<span class="pill num" title="日記帳平均收款匯率——第一次收款 31、第二次 33 就填 32；財報匯率每次不同，此值僅供最快最接近的外幣餘額參考">匯率 ${proj.fx||'—'}${proj.fx_asof?`（更新 ${proj.fx_asof}）`:''}</span>${isAdmin()?`<button class="hbtn" onclick="frmFx('${pr}')">改匯率</button>`:''}`:''}
+   ${(()=>{if(!proj.loe_planned_end)return '';
+     const cm=W.filter(a=>a.project_id===pr&&+a.amount_twd>0).map(a=>a.month).reduce((mx,m)=>m>mx?m:mx,'');
+     const pe=(+proj.loe_planned_end.slice(0,4))+'/'+(+proj.loe_planned_end.slice(4));
+     return (cm&&cm>=proj.loe_planned_end)
+       ?`<span class="pill approved" title="調 LOE／調薪後，「已安排剩餘」代表照現在排法走到底的結果">LOE 已鋪滿至 ${pe}</span>`
+       :`<span class="pill pending">⚠ LOE 只排到 ${cm?(+cm.slice(0,4))+'/'+(+cm.slice(4)):'（無）'}，計畫終點 ${pe}——未編月份不算錢，「已安排剩餘」偏樂觀</span>`})()}
    ${internalNote(proj.note)}</div>`;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
   if(lines.length){
@@ -1829,32 +1835,45 @@ function vProjects(){
   let h=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
     ${isAdmin()?'<button class="hbtn" onclick="frmProject()">＋新增案子</button>':''}
     <span class="note" style="margin:0">一列一案；點進去看預算、人力與每月支出。虛線標記表示還在洽談，尚未確定。</span></div>
-  <div class="tblwrap"><table><thead><tr><th>案子</th><th>資助單位</th><th>期間</th><th>狀態</th><th>剩餘預算(TWD)</th><th>7月起已安排</th><th>已安排／剩餘預算</th><th>目前排到</th><th>人數</th></tr></thead><tbody>`;
+  <div class="tblwrap"><table><thead><tr><th>案子</th><th>資助單位</th><th>期間</th><th>狀態</th><th>預算（原幣）</th><th>剩餘預算(TWD)</th><th>7月起已安排</th><th>已安排剩餘（原幣）</th><th>已安排／剩餘預算</th><th>LOE 覆蓋</th><th>人數</th></tr></thead><tbody>`;
   DB.projects.forEach(p=>{
     const mm=String(p.period||'').match(/\[(\d{4})-(\d{2})[^,]*,(\d{4})-(\d{2})-(\d{2})/);
     let per='—';
     if(mm){let em=mm[3]+mm[4];if(String(p.period).trim().endsWith(')')&&mm[5]==='01')em=mAdd(em,-1);
       per=`${+mm[1]}/${+mm[2]}–${+em.slice(0,4)}/${+em.slice(4)}`}
     const lines=DB.budget_lines.filter(b=>b.project_id===p.id);
-    let budget=0,used=0;
-    lines.forEach(b=>{const x=lineBurn(b);budget+=x.rem;used+=x.used});
+    let budget=0,used=0,budOrig=0,remOrig=0,budOrigAll=lines.length>0;
+    lines.forEach(b=>{const x=lineBurn(b);budget+=x.rem;used+=x.used;
+      if(b.budget_orig!=null)budOrig+=+b.budget_orig;else budOrigAll=false;
+      remOrig+=+b.remaining_orig||0});
     const projW=W.filter(a=>a.project_id===p.id);
     const projE=(EXP||[]).filter(e=>e.scenario_id===ACTIVE&&e.project_id===p.id);
     // B31：無預算線案的「已安排」也要算業務費（GR 8月 306k 之前在此隱形）
     if(!lines.length)used=projW.reduce((s,a)=>s+(+a.amount_twd||0),0)
       +projE.filter(e=>e.month>='202607').reduce((s,e)=>s+(+e.amount_twd||0),0);
+    const fx=+p.fx||31.5;
+    const schedRemOrig=lines.length?remOrig-used/fx:null; // 整合預算：照現在的排法走到底，這個案還剩多少（原幣）
     const lastM=[...projW.map(a=>a.month),...projE.map(e=>e.month)].reduce((mx,m)=>m>mx?m:mx,'');
+    const covMax=projW.filter(a=>+a.amount_twd>0).map(a=>a.month).reduce((mx,m)=>m>mx?m:mx,'');
+    const covGap=p.loe_planned_end&&(!covMax||covMax<p.loe_planned_end);
+    const covCell=p.loe_planned_end
+      ?(covGap?`<span class="pill pending" title="LOE 只排到 ${covMax?(+covMax.slice(0,4))+'/'+(+covMax.slice(4)):'（無）'}，計畫終點 ${(+p.loe_planned_end.slice(0,4))+'/'+(+p.loe_planned_end.slice(4))}——後面月份未編，「已安排剩餘」偏樂觀">⚠ 缺口</span>`
+        :`<span class="pill approved" title="LOE 已鋪滿至計畫終點 ${(+p.loe_planned_end.slice(0,4))+'/'+(+p.loe_planned_end.slice(4))}">鋪滿</span>`)
+      :(lastM?`<span style="color:var(--ink3)">${(+lastM.slice(0,4))+'/'+(+lastM.slice(4))}</span>`:'—');
     const ppl=new Set(projW.map(a=>a.person_id)).size;
     const ratio=budget>0?used/budget*100:0;
+    const cur=lines.length?(lines[0].currency||'USD'):'';
     h+=`<tr class="click" onclick="location.hash='#project/${p.id}'">
       <td><b>${p.name}</b>${p.provisional?`<span class="prov-badge">還在談${p.confidence!=null?' · 目前估計 '+Math.round(p.confidence*100)+'%':''}</span>`:''}</td>
       <td>${p.donor||''}</td><td class="num">${per}</td>
       <td><span class="pill ${p.status==='active'?'approved':p.status==='pipeline'?'pending':'draft'}">${stLabel(p.status)}</span></td>
+      <td class="num" title="逐線預算（原幣）加總，可對照合約總額">${budOrigAll&&budOrig?origMoney(budOrig,cur):'—'}</td>
       <td class="num">${budget?k(budget):'—'}</td><td class="num">${used?k(used):'—'}</td>
+      <td class="num" title="＝剩餘（原幣）−已安排÷平均收款匯率 ${fx}${schedRemOrig!=null&&schedRemOrig<0?'；負數＝照現在排法撐不到最後':''}"${schedRemOrig!=null&&schedRemOrig<0?' style="color:var(--crit);font-weight:700"':''}>${schedRemOrig!=null?origMoney(schedRemOrig,cur):'—'}</td>
       <td>${budget?burnMeter({rem:budget,used,pct:Math.min(100,ratio),ratio,over:used>budget,src:'project'}):'—'}</td>
-      <td class="num">${lastM?(+lastM.slice(0,4))+'/'+(+lastM.slice(4)):'—'}</td><td class="num">${ppl||'—'}</td></tr>`;
+      <td>${covCell}</td><td class="num">${ppl||'—'}</td></tr>`;
   });
-  h+='</tbody></table></div><p class="note">比例的分母是系統目前記錄的剩餘預算；超過 100% 會標紅，表示必須先調整預算或減少安排。</p>';
+  h+='</tbody></table></div><p class="note">整合預算怎麼讀：「預算（原幣）」對照合約總額檢查架構；「已安排剩餘（原幣）」＝調 LOE／調薪之後，照現在的排法走到底這案還剩多少——<b>負紅字＝撐不到最後</b>；「LOE 覆蓋」缺口＝後面月份還沒編、剩餘數字偏樂觀，先鋪滿再看錢。</p>';
   return h;
 }
 // ---- B5: 職務總覽 ----
