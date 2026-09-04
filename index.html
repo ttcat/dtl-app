@@ -632,6 +632,16 @@ window.frmProject=()=>openForm('新增案子',[
   await reload('已新增案子 '+v.name);
 });
 
+window.frmFx=pr=>{const proj=prmap[pr];openForm('平均收款匯率（'+(proj.name||pr)+'）',[
+  {id:'fx',label:'平均收款匯率*',type:'number',value:proj.fx||''},
+  {id:'asof',label:'匯率更新日期*',type:'date',value:proj.fx_asof||new Date().toISOString().slice(0,10)},
+],async v=>{
+  const fx=+v.fx;if(!fx||fx<=0)throw new Error('匯率必填且需大於 0');
+  if(!v.asof)throw new Error('更新日期必填');
+  await dbUpd('projects','id=eq.'+pr,{fx,fx_asof:v.asof});
+  try{await dbIns('audit_log',{actor:ME.email,table_name:'projects',row_pk:pr,action:'UPDATE',before:{fx:proj.fx,fx_asof:proj.fx_asof},after:{fx,fx_asof:v.asof}})}catch(e){}
+  await reload();
+})};
 window.frmLine=pr=>openForm('新增預算線（'+((prmap[pr]||{}).name||pr)+'）',[
   {id:'name',label:'線名*'},{id:'budget',label:'預算(原幣)*',type:'number'},{id:'note',label:'備註'},
 ],async v=>{
@@ -1347,8 +1357,73 @@ function vFinance(){
   if(Object.keys(provT).length)h+=`<tr><td style="color:var(--ink3)">申請中／還在談（另計，不混入）</td><td></td>${months.map(m=>`<td><span class="cell num uP">${k(provT[m]||0)}</span></td>`).join('')}<td class="num">${k(T(provT))}</td></tr>`;
   h+=`<tr class="grand"><td><b style="color:var(--crit)">DTL 自付合計</b></td><td></td>${months.map(m=>`<td><span class="cell num" style="color:var(--crit)">${k(selfT[m]||0)}</span></td>`).join('')}<td class="num"><b style="color:var(--crit)">${k(T(selfT))}</b></td></tr>`;
   h+=`</tbody></table></div><p class="note">這頁照財務的 Annual Budget（Budget Details）排：一筆費用一列、右邊逐月、底下列出每個資金來源出多少、最後一列 DTL 自付。人事費的比例＝當月掛該案的工作比例；福利與業務費來自支出計劃（已發生月份用實際數）。匯出檔的欄位順序照 Budget Details，可直接貼回 Annual Budget。</p>`;
+  // ---- B44: 薪資分帳工具（Sean 測試版）----
+  h+=`<h2>🧮 薪資分帳工具（測試版）</h2>
+  <div class="card" style="padding:12px">
+   <p class="note" style="margin-top:0">把薪資清冊貼進來（每行「姓名［Tab 或空白］當月薪資」，姓名用中文名或別名都可以），選月份按計算——系統用該月的 LOE 安排把每個人的薪資拆到各資金來源，清冊薪資與系統月成本不同時按比例縮放、差額列 DTL 存金。結果可複製成 Tab 分隔貼回日記帳。</p>
+   <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+    <textarea id="splitIn" rows="8" placeholder="例：&#10;寒山\t59800&#10;張凱莉\t76862" style="flex:1;min-width:260px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px"></textarea>
+    <div style="display:flex;flex-direction:column;gap:6px">
+     <select id="splitM">${M.map(m=>`<option value="${m}">${m.slice(0,4)}/${+m.slice(4)}</option>`).join('')}</select>
+     <button class="hbtn" onclick="splitCalc()">計算分帳</button>
+     <button class="hbtn" onclick="splitCopy()">複製結果（Tab 分隔）</button>
+    </div>
+   </div>
+   <div id="splitOut" style="margin-top:10px"></div>
+  </div>`;
   return h;
 }
+window.SPLIT_TSV='';
+window.toast=window.toast||(msg=>{const d=document.createElement('div');d.textContent=msg;d.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:8px 16px;border-radius:8px;z-index:9999;font-size:13px';document.body.appendChild(d);setTimeout(()=>d.remove(),2200)});
+window.splitCalc=()=>{
+  const m=document.getElementById('splitM').value;
+  const txt=document.getElementById('splitIn').value;
+  const out=document.getElementById('splitOut');
+  const find=s=>{s=s.trim();return DB.people.find(p=>p.id===s||p.name===s||(p.alias&&p.alias===s)||(p.name&&p.name.includes(s)&&s.length>=2))};
+  const rows=[];const misses=[];
+  txt.split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>{
+    const mm=l.split(/[\t,]+|\s{1,}/).filter(Boolean);
+    if(mm.length<2){misses.push(l);return}
+    const sal=+String(mm[mm.length-1]).replace(/[,，]/g,'');
+    const nm=mm.slice(0,-1).join(' ');
+    const p=find(nm);
+    if(!p||!sal){misses.push(l);return}
+    rows.push({p,sal});
+  });
+  if(!rows.length){out.innerHTML='<p class="note">沒有讀到有效的行'+(misses.length?'（無法辨識：'+misses.map(esc).join('、')+'）':'')+'</p>';return}
+  const funders=new Set();const calc=[];
+  rows.forEach(({p,sal})=>{
+    const al=W.filter(a=>a.person_id===p.id&&a.month===m&&+a.amount_twd>0);
+    const allocSum=al.reduce((s,a)=>s+ +a.amount_twd,0);
+    const denom=costOf(p.id,m)||allocSum; // 系統月成本；沒有就用配置合計
+    const scale=denom>0?sal/denom:0;
+    const by={};let alloc=0;
+    al.forEach(a=>{const v=Math.round(+a.amount_twd*scale);by[a.project_id]=(by[a.project_id]||0)+v;alloc+=v;funders.add(a.project_id)});
+    // 差額（清冊薪資−已分）→ 存金
+    const gap=sal-alloc;
+    if(Math.abs(gap)>0){by['internal']=(by['internal']||0)+gap;funders.add('internal')}
+    calc.push({p,sal,by,noLoe:al.length===0});
+  });
+  const fl=[...funders].sort((a,b)=>a==='internal'?1:b==='internal'?-1:a.localeCompare(b));
+  let tot={};
+  let html=`<div class="tblwrap"><table><thead><tr><th>人員</th><th class="num">清冊薪資</th>${fl.map(f=>`<th class="num">${SHORT[f]||f}</th>`).join('')}</tr></thead><tbody>`;
+  let tsv='人員\t清冊薪資\t'+fl.map(f=>(prmap[f]||{}).name||f).join('\t')+'\n';
+  calc.forEach(({p,sal,by,noLoe})=>{
+    html+=`<tr><td>${p.alias||p.name}${noLoe?'<span class="tag">該月無 LOE 安排→全額存金</span>':''}</td><td class="num">${k(sal)}</td>${fl.map(f=>{const v=by[f]||0;tot[f]=(tot[f]||0)+v;return `<td class="num"${f==='internal'&&v?' style="color:var(--crit)"':''}>${v?k(v):'·'}</td>`}).join('')}</tr>`;
+    tsv+=`${p.alias||p.name}\t${sal}\t${fl.map(f=>by[f]||0).join('\t')}\n`;
+  });
+  const salT=calc.reduce((s,c)=>s+c.sal,0);
+  html+=`<tr class="grand"><td><b>合計</b></td><td class="num"><b>${k(salT)}</b></td>${fl.map(f=>`<td class="num"><b>${k(tot[f]||0)}</b></td>`).join('')}</tr></tbody></table></div>`;
+  if(misses.length)html+=`<p class="note">無法辨識的行：${misses.map(esc).join('、')}</p>`;
+  html+=`<p class="note">分帳規則：各案金額＝系統該月 LOE 安排 ×（清冊薪資 ÷ 系統月成本），四捨五入；清冊薪資減去已分金額的差額列 DTL 存金（紅字）。此為草稿供核對，未寫入資料庫。</p>`;
+  tsv+=`合計\t${salT}\t${fl.map(f=>tot[f]||0).join('\t')}\n`;
+  window.SPLIT_TSV=tsv;
+  out.innerHTML=html;
+};
+window.splitCopy=()=>{
+  if(!window.SPLIT_TSV){toast('先按「計算分帳」');return}
+  navigator.clipboard.writeText(window.SPLIT_TSV).then(()=>toast('已複製，可貼到日記帳'),()=>toast('複製失敗——請手動選取'));
+};
 window.exportFinance=()=>{
   const{rows,months}=finBuild();
   const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
@@ -1427,10 +1502,11 @@ function vMaster(){
         // D33/F10：付款人顏色與超載警示並存——資金視圖不得吞掉負載警示
         const lo=loeOf(p.id,m);
         const over=lo.used>lo.cap+0.5;
-        const basisPend=over&&isBasisPending(ACTIVE,p.id,m);
+        const consOver=over&&p.type==='contractor'; // 0904 定案：顧問按 engagement 費率計費，非產能
+        const basisPend=over&&(consOver||isBasisPending(ACTIVE,p.id,m));
         const tip=f.rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')
           +(f.gap>0.5?`&#10;⚠ 沒人付的部分 ${k(f.gap)}（薪資>配置合計，差額列存金）`:'')
-          +(over?(basisPend?'&#10;⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植':`&#10;⚠ 超過工時上限 ${lo.cap}%（目前合計 ${Math.round(lo.used)}%）`):'')
+          +(over?(consOver?'&#10;ℹ 顧問＝各 engagement 獨立費率計費，合計逾 100% 非超載（0904 定案）':basisPend?'&#10;⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植':`&#10;⚠ 超過工時上限 ${lo.cap}%（目前合計 ${Math.round(lo.used)}%）`):'')
           +(provPerson?'&#10;（還沒確定要聘的人，列於下方另計列）':'');
         let cls,txt;
         if(f.rows.length===0&&f.sal>0){cls='fN';txt='0'}
@@ -1445,10 +1521,11 @@ function vMaster(){
       const prov=rows.some(a=>a.provisional);
       const hasPend=rows.some(a=>pendingAt(p.id,m,a.project_id,a.ned_line)||pendingAt(p.id,m,a.project_id));
       const over=used>cap+0.5;
-      const basisPend=over&&isBasisPending(ACTIVE,p.id,m);
+      const consOver=over&&p.type==='contractor';
+      const basisPend=over&&(consOver||isBasisPending(ACTIVE,p.id,m));
       const cls=over?(basisPend?'uBasis':'uOver'):used>=cap-1?'u100':used>=cap*0.6?'u60':'u0';
       const nt=noteOf('person',p.id,m);
-      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?(basisPend?'⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植&#10;':'⚠ 超過他的工時上限 '+cap+'%&#10;'):''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}%${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
+      h+=`<td><span class="cell num ${cls} ${prov?'uP':''} ${hasPend?'pend':''} ${m>FARM?'uFar':''} ${nt?'hasNote':''}" title="${over?(consOver?'ℹ 顧問＝各 engagement 獨立費率計費，合計逾 100% 非超載（0904 定案）&#10;':basisPend?'⚠ 計薪基準待修約（定案 D33）——顧問／兼職與正職的尺不可互比，非超載誤植&#10;':'⚠ 超過他的工時上限 '+cap+'%&#10;'):''}${rows.map(a=>(SHORT[a.project_id]||a.project_id)+' '+k(a.amount_twd)).join('&#10;')}${nt?'&#10;📝 '+esc(nt):''}${rows.filter(a=>sealOf(a.project_id,m)).map(a=>sealTip(a.project_id,m)).join('')}">${Math.round(used)}%${hasPend?'⏳':''}${rows.some(a=>sealOf(a.project_id,m))?'🔒':''}</span></td>`;
     });
     h+='</tr>';
   });
@@ -1651,23 +1728,53 @@ function vProject(pr){
    ${proj.provisional?`<span class="prov-badge">還在談${proj.confidence?' · 目前估計 '+Math.round(proj.confidence*100)+'%':''}</span>`:''}
    ${isAdmin()&&proj.provisional?`<button class="hbtn" style="color:var(--good);border-color:var(--good)" onclick="promoteProject('${pr}')">✓ 轉正式</button>`:''}
    ${isAdmin()?`<button class="hbtn" onclick="frmProject()">＋新增案子</button><button class="hbtn" onclick="frmLine('${pr}')">＋新增預算線</button>`:''}
+   ${proj.currency&&proj.currency!=='TWD'?`<span class="pill num" title="日記帳平均收款匯率——第一次收款 31、第二次 33 就填 32；財報匯率每次不同，此值僅供最快最接近的外幣餘額參考">匯率 ${proj.fx||'—'}${proj.fx_asof?`（更新 ${proj.fx_asof}）`:''}</span>${isAdmin()?`<button class="hbtn" onclick="frmFx('${pr}')">改匯率</button>`:''}`:''}
    ${internalNote(proj.note)}</div>`;
   const lines=DB.budget_lines.filter(b=>b.project_id===pr);
   if(lines.length){
     const billed={};
     W.forEach(a=>{if(a.project_id===pr&&a.ned_line){const key=a.ned_line.replace('*REBUDGET','');billed[key]=(billed[key]||0)+ +a.amount_twd}}); // 案內聚合——(案,線) 複合鍵
-    h+=`<h2>預算使用狀況</h2><div class="tblwrap"><table><thead><tr><th>預算線</th><th>剩餘（原幣）</th><th>7月暫記</th><th>8月起已安排</th><th>7月起已安排／剩餘預算</th><th>需要處理</th></tr></thead><tbody>`;
-    lines.forEach(b=>{
+    const fx=+proj.fx||31.5;
+    const asofs=[...new Set(lines.map(b=>b.asof).filter(Boolean))];
+    const asofLabel=asofs.length===1?`（截至 ${asofs[0]}）`:asofs.length?'（截至日見滑過提示）':'';
+    // 0904（財務需求八）：預算(原幣)＋LOE%＋已支用＝預算−剩餘＋已安排剩餘(原幣)；總計列供架構核對
+    h+=`<h2>預算使用狀況</h2><div class="tblwrap"><table><thead><tr><th>預算線</th><th>預算（原幣）</th><th>專案LOE%</th><th>已支用（原幣）</th><th>剩餘（原幣）${asofLabel}</th><th>7月暫記</th><th>8月起已安排</th><th>已安排剩餘（原幣）</th><th>7月起已安排／剩餘預算</th><th>需要處理</th></tr></thead><tbody>`;
+    let tBud=0,tRem=0,tSchedRem=0,budAll=true;
+    const rowOf=(b,opt)=>{
+      opt=opt||{};
       const isPers=isPeopleLine(b);
-      const burn=lineBurn(b);const{used,over}=burn; // B24-3/4：沒有人力配置的線改用支出計劃
+      const burn=opt.virtual?null:lineBurn(b);const used=burn?burn.used:(opt.usedTwd||0);const over=burn?burn.over:false;
       const jl=+b.july_draw_twd||0;const sched=Math.max(0,used-jl);
-      h+=`<tr class="click" onclick="location.hash='#line/${encodeURIComponent(pr+'||'+b.name)}'"><td>${esc(lineLabel(b.name))}${b.provisional?'<span class="prov-badge">待文件</span>':''}${isPers?'':`<span style="color:var(--ink3);font-size:10.5px">（${lineKindLabel(b)}）</span>`}</td>
-       <td class="num" title="原幣顯示，不隨幣別切換換算">${origMoney(+b.remaining_orig,b.currency)}</td>
+      const bud=(b.budget_orig==null||opt.budOverride!=null)?(opt.budOverride??null):+b.budget_orig;
+      const rem=opt.remOverride!=null?opt.remOverride:+b.remaining_orig;
+      const spent=(bud!=null&&!isNaN(rem))?bud-rem:null;
+      const schedRem=(!isNaN(rem))?rem-used/fx:null;
+      if(bud!=null)tBud+=bud;else budAll=false;
+      if(!isNaN(rem))tRem+=rem;
+      if(schedRem!=null)tSchedRem+=schedRem;
+      return `<tr ${opt.virtual?'style="color:var(--ink3)"':`class="click" onclick="location.hash='#line/${encodeURIComponent(pr+'||'+b.name)}'"`}><td>${esc(opt.label||lineLabel(b.name))}${b.provisional?'<span class="prov-badge">待文件</span>':''}${opt.virtual?'<span class="tag">虛擬</span>':isPers?'':`<span style="color:var(--ink3);font-size:10.5px">（${lineKindLabel(b)}）</span>`}</td>
+       <td class="num" title="日記帳 Budget Tracking 匯入（修約前現核准）">${bud!=null?origMoney(bud,b.currency):'—'}</td>
+       <td class="num">${b.budget_loe!=null&&!opt.virtual?Math.round(+b.budget_loe)+'%':'—'}</td>
+       <td class="num" title="＝預算−剩餘">${spent!=null?origMoney(spent,b.currency):'—'}</td>
+       <td class="num" title="原幣顯示，不隨幣別切換換算${b.asof?'；截至 '+b.asof:''}">${origMoney(rem,b.currency)}</td>
        <td class="num">${jl?k(jl):'—'}</td><td class="num">${sched?k(sched):'—'}</td>
-       <td>${burnMeter(burn)}</td>
+       <td class="num" title="＝剩餘−已安排÷平均收款匯率 ${fx}；與財報實際剩餘會有匯差，僅供最接近的參考">${schedRem!=null?origMoney(schedRem,b.currency):'—'}</td>
+       <td>${burn?burnMeter(burn):'—'}</td>
        <td>${b.ring_fence?`<span class="pill">不可挪用</span>`:(over?'<span class="pill pending">需要調整預算</span>':'')}</td></tr>`;
+    };
+    lines.forEach(b=>{
+      if(proj.benefits_in_personnel&&isPeopleLine(b)){
+        // 財務規則：funder 無「員工福利」科目時，人事費÷1.3＝薪資、30% 差額列虛擬福利線，才能與 DTL 的人事估計範圍一致
+        const bud=+b.budget_orig||0,rem=+b.remaining_orig||0;
+        h+=rowOf(b,{label:lineLabel(b.name)+'（薪資部分＝原線÷1.3）',budOverride:Math.round(bud/1.3),remOverride:Math.round(rem/1.3)});
+        const benUsed=EXP.filter(e=>e.scenario_id===ACTIVE&&e.project_id===pr&&e.category==='benefits').reduce((s,e)=>s+ +e.amount_twd,0);
+        h+=rowOf(b,{virtual:true,label:'員工福利（虛擬線＝人事費的 30%）',budOverride:Math.round(bud-bud/1.3),remOverride:Math.round(rem-rem/1.3),usedTwd:benUsed});
+      }else{
+        h+=rowOf(b);
+      }
     });
-    h+='</tbody></table></div>';
+    h+=`<tr class="grand"><td><b>合計（架構核對）</b></td><td class="num"><b>${budAll?origMoney(tBud,lines[0].currency):'—'}</b></td><td></td><td></td><td class="num"><b>${origMoney(tRem,lines[0].currency)}</b></td><td></td><td></td><td class="num"><b>${origMoney(tSchedRem,lines[0].currency)}</b></td><td colspan="2"></td></tr>`;
+    h+='</tbody></table></div><p class="note">「預算（原幣）」總額可對照合約總額檢查架構有沒有錯（例：AIT(DI) 應為 US$75,000）；「已安排剩餘」用平均收款匯率換算，與財報會有匯差，是最快最接近的參考值。</p>';
   }
   // ---- B12: 業務費（非人事）逐月明細——member 可見，admin 點格可編 ----
   const expRows=EXP.filter(e=>e.scenario_id===ACTIVE&&e.project_id===pr);
